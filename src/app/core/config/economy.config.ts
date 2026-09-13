@@ -29,11 +29,11 @@ export interface BallTierConfig {
 }
 
 export const BALL_TIERS: Record<BallTier, BallTierConfig> = {
-  normal: { tier: 'normal', label: 'Normal', color: '#3b82f6', glow: '#60a5fa', coinValue: 1, minHp: 3, maxHp: 6, speed: 34, radius: 26, weight: 46 },
-  fast: { tier: 'fast', label: 'Fast', color: '#22c55e', glow: '#4ade80', coinValue: 2, minHp: 4, maxHp: 7, speed: 58, radius: 24, weight: 24 },
-  heavy: { tier: 'heavy', label: 'Heavy', color: '#a855f7', glow: '#c084fc', coinValue: 3, minHp: 9, maxHp: 14, speed: 24, radius: 32, weight: 16 },
-  gold: { tier: 'gold', label: 'Gold', color: '#f59e0b', glow: '#fbbf24', coinValue: 5, minHp: 5, maxHp: 8, speed: 40, radius: 27, weight: 10 },
-  boss: { tier: 'boss', label: 'Boss', color: '#ef4444', glow: '#f87171', coinValue: 10, minHp: 22, maxHp: 30, speed: 16, radius: 42, weight: 4 },
+  normal: { tier: 'normal', label: 'Normal', color: '#3b82f6', glow: '#60a5fa', coinValue: 1, minHp: 3, maxHp: 6, speed: 64, radius: 26, weight: 46 },
+  fast: { tier: 'fast', label: 'Fast', color: '#22c55e', glow: '#4ade80', coinValue: 2, minHp: 4, maxHp: 7, speed: 100, radius: 24, weight: 24 },
+  heavy: { tier: 'heavy', label: 'Heavy', color: '#a855f7', glow: '#c084fc', coinValue: 3, minHp: 9, maxHp: 14, speed: 46, radius: 32, weight: 16 },
+  gold: { tier: 'gold', label: 'Gold', color: '#f59e0b', glow: '#fbbf24', coinValue: 5, minHp: 5, maxHp: 8, speed: 74, radius: 27, weight: 10 },
+  boss: { tier: 'boss', label: 'Boss', color: '#ef4444', glow: '#f87171', coinValue: 10, minHp: 22, maxHp: 30, speed: 30, radius: 42, weight: 4 },
 };
 
 export const ECONOMY_CONFIG = {

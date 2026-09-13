@@ -1,32 +1,33 @@
 /**
- * ADMOB AD UNIT CONFIGURATION — CENTRALIZED, TEST IDS FOR NOW
- * ---------------------------------------------------------------------
- * These are Google's official public sample ad unit IDs. They always serve
- * a clearly labeled "Test Ad" and are safe to ship during development —
- * using real ad unit IDs before the app is approved / on non-test devices
- * risks invalid-traffic flags on the whole AdMob account.
- * See https://developers.google.com/admob/android/test-ads
+ * AdMob ad unit configuration — the single place that names which ad unit ID
+ * each format uses.
  *
- * IMPORTANT — how coin rewards stay separate from this file:
- * This file (and AdmobService) only ever answers "was the ad watched to
- * completion: true/false." It never decides how many coins that's worth —
- * that lives solely in `economy.config.ts` (`ECONOMY_CONFIG.rewardedAdCoins`),
- * which is the one place the spec's "server" configuration is meant to
- * control. What a coin is worth in INR is not configured on the client at
- * all — that's computed server-side by the real redemption API. Nothing in
- * the AdMob layer should ever hardcode a coin amount.
+ * These are Google's official sample ad unit IDs — they always serve a clearly
+ * labeled "Test Ad" and are safe to ship during development (real ad unit IDs
+ * used with unapproved apps/test devices can get an AdMob account flagged for
+ * invalid traffic). See https://developers.google.com/admob/android/test-ads
  *
- * GOING TO PRODUCTION: create real ad units in the AdMob console for this
- * app's real App ID, and replace every value below with them. Nothing else
- * in the app needs to change — every call site reads from here.
+ * IMPORTANT — how coin rewards stay separate from this file: this file (and
+ * AdmobService) only ever answers "was the ad watched to completion: true/
+ * false." It never decides how many coins that's worth — that lives solely in
+ * `economy.config.ts` (`ECONOMY_CONFIG.rewardedAdCoins`). What a coin is worth
+ * in INR is not configured on the client at all. Nothing in the AdMob layer
+ * should ever hardcode a coin or money amount.
+ *
+ * Going live later is a one-line-per-format swap here: create real ad units in
+ * the AdMob console for this app's real AdMob App ID (see
+ * android/app/src/main/res/values/strings.xml → admob_app_id, kept in sync by
+ * scripts/setup-admob-android.js) and paste their IDs in below. Nothing else in
+ * the app needs to change.
  */
 export const AD_UNIT_IDS = {
+  banner: 'ca-app-pub-3940256099942544/6300978111',
   interstitial: 'ca-app-pub-3940256099942544/1033173712',
   rewarded: 'ca-app-pub-3940256099942544/5224354917',
 } as const;
 
-/** Show an interstitial at a breakpoint at most once every N completed game rounds (policy-safe pacing). */
+/** Show interstitials at most once every N completed rounds (policy-safe frequency capping). */
 export const INTERSTITIAL_EVERY_N_ROUNDS = 2;
 
-/** How long to wait for an ad to finish loading before giving up (ms). */
-export const AD_LOAD_TIMEOUT_MS = 4000;
+/** Give up waiting for an interstitial/rewarded ad to load/show after this long, so it never blocks navigation. */
+export const INTERSTITIAL_TIMEOUT_MS = 4000;

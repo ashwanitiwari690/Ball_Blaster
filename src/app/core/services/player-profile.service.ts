@@ -7,9 +7,11 @@ export interface PlayerProfile {
   name: string;
   gamesPlayed: number;
   highScore: number;
+  /** Highest in-game level ever reached across all runs — new games start here instead of always at level 1. */
+  highestLevel: number;
 }
 
-const DEFAULT_PROFILE: PlayerProfile = { name: 'Player123', gamesPlayed: 0, highScore: 0 };
+const DEFAULT_PROFILE: PlayerProfile = { name: 'Player123', gamesPlayed: 0, highScore: 0, highestLevel: 1 };
 
 function load(): PlayerProfile {
   try {
@@ -31,6 +33,10 @@ export class PlayerProfileService {
     });
   }
 
+  get current(): PlayerProfile {
+    return this.profile$.value;
+  }
+
   private persist(next: PlayerProfile): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     this.profile$.next(next);
@@ -43,6 +49,14 @@ export class PlayerProfileService {
       gamesPlayed: current.gamesPlayed + 1,
       highScore: Math.max(current.highScore, score),
     });
+  }
+
+  /** Raises the saved starting level for future runs if this run reached further than any before it. Never lowers it. */
+  recordLevelReached(level: number): void {
+    const current = this.profile$.value;
+    const highestLevel = Math.max(current.highestLevel, Math.floor(level) || 1);
+    if (highestLevel === current.highestLevel) return;
+    this.persist({ ...current, highestLevel });
   }
 
   reset(): void {

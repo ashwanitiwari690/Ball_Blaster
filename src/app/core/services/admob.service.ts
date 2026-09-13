@@ -1,7 +1,14 @@
 import { Injectable } from '@angular/core';
 import { Capacitor, PluginListenerHandle } from '@capacitor/core';
-import { AdMob, RewardAdPluginEvents } from '@capacitor-community/admob';
-import { AD_LOAD_TIMEOUT_MS, AD_UNIT_IDS, INTERSTITIAL_EVERY_N_ROUNDS } from '../config/admob.config';
+import {
+  AdMob,
+  BannerAdOptions,
+  BannerAdPluginEvents,
+  BannerAdPosition,
+  BannerAdSize,
+  RewardAdPluginEvents,
+} from '@capacitor-community/admob';
+import { AD_UNIT_IDS, INTERSTITIAL_EVERY_N_ROUNDS, INTERSTITIAL_TIMEOUT_MS } from '../config/admob.config';
 
 /**
  * Thin wrapper around @capacitor-community/admob — the ONLY file in the app
@@ -14,17 +21,18 @@ import { AD_LOAD_TIMEOUT_MS, AD_UNIT_IDS, INTERSTITIAL_EVERY_N_ROUNDS } from '..
  * that resolves `false`/does nothing. Callers must treat `false` from
  * `showRewarded()` as "no reward" — never grant anything optimistically.
  *
- * No persistent banner: this app only shows interstitial/rewarded ads,
- * matching the rest of this project's sibling Ionic games — an always-on
- * banner risked covering the bottom nav. AdMob is still initialized at boot
- * so interstitial/rewarded ads are preloaded and ready by the time the
- * player reaches a breakpoint or a reward flow.
+ * Persistent banner: shown on every screen except live gameplay (where it
+ * would eat into the cannon's drag area), toggled by `AppComponent` reacting
+ * to route changes — see `showBanner()`/`hideBanner()`. AdMob is initialized
+ * at boot so interstitial/rewarded ads are preloaded and ready by the time
+ * the player reaches a breakpoint or a reward flow.
  */
 @Injectable({ providedIn: 'root' })
 export class AdmobService {
   readonly isSupported = Capacitor.isNativePlatform();
 
   private initPromise?: Promise<void>;
+  private bannerVisible = false;
 
   private interstitialReady = false;
   private interstitialLoading = false;
@@ -46,6 +54,49 @@ export class AdmobService {
         .catch(() => {});
     }
     return this.initPromise;
+  }
+
+  // ---------------------------------------------------------------------
+  // Banner
+  // ---------------------------------------------------------------------
+
+  /** Shows the persistent banner. Safe to call repeatedly — a second call while already visible is a no-op. */
+  async showBanner(): Promise<void> {
+    if (!this.isSupported) return;
+    await this.initialize();
+    if (this.bannerVisible) return;
+    const options: BannerAdOptions = {
+      adId: AD_UNIT_IDS.banner,
+      adSize: BannerAdSize.ADAPTIVE_BANNER,
+      position: BannerAdPosition.BOTTOM_CENTER,
+      margin: 0,
+    };
+    try {
+      this.bannerVisible = true;
+      await AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => this.setBannerSpace(info.height));
+      await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => this.setBannerSpace(0));
+      await AdMob.showBanner(options);
+    } catch {
+      this.bannerVisible = false;
+      this.setBannerSpace(0);
+    }
+  }
+
+  /** Hides the persistent banner (e.g. entering gameplay, or going offline). */
+  async hideBanner(): Promise<void> {
+    if (!this.isSupported || !this.bannerVisible) return;
+    this.bannerVisible = false;
+    this.setBannerSpace(0);
+    try {
+      await AdMob.hideBanner();
+    } catch {
+      /* nothing to clean up */
+    }
+  }
+
+  /** Exposes the banner's live height as a CSS var so page content/bottom-nav can pad/shift around it. */
+  private setBannerSpace(heightPx: number): void {
+    document.documentElement.style.setProperty('--ad-banner-space', `${Math.max(0, heightPx)}px`);
   }
 
   // ---------------------------------------------------------------------
@@ -83,7 +134,7 @@ export class AdmobService {
   /**
    * Shows the interstitial if one is ready (or can be loaded within a short
    * timeout), and resolves once it's dismissed. Gives up after
-   * AD_LOAD_TIMEOUT_MS so a slow/unavailable ad never blocks whatever
+   * INTERSTITIAL_TIMEOUT_MS so a slow/unavailable ad never blocks whatever
    * navigation it's gating. Resolves true only if an ad was actually shown.
    * Re-entrant calls while one is already showing resolve false immediately
    * instead of stacking requests.
@@ -94,7 +145,7 @@ export class AdmobService {
     try {
       await this.initialize();
       if (!this.interstitialReady) {
-        await Promise.race([this.preloadInterstitial(), new Promise<void>((resolve) => setTimeout(resolve, AD_LOAD_TIMEOUT_MS))]);
+        await Promise.race([this.preloadInterstitial(), new Promise<void>((resolve) => setTimeout(resolve, INTERSTITIAL_TIMEOUT_MS))]);
       }
       if (!this.interstitialReady) return false;
       this.interstitialReady = false;
@@ -152,7 +203,7 @@ export class AdmobService {
     if (!this.isSupported) return this.simulateWebRewardedAd();
     await this.initialize();
     if (!this.rewardedReady) {
-      await Promise.race([this.preloadRewarded(), new Promise<void>((resolve) => setTimeout(resolve, AD_LOAD_TIMEOUT_MS))]);
+      await Promise.race([this.preloadRewarded(), new Promise<void>((resolve) => setTimeout(resolve, INTERSTITIAL_TIMEOUT_MS))]);
     }
     if (!this.rewardedReady) return false;
     this.rewardedReady = false;

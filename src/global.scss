@@ -221,5 +221,5 @@ ion-content::part(scroll)::-webkit-scrollbar {
 }
 
 .bb-bottom-nav-spacer {
-  height: 78px;
+  height: calc(78px + var(--ad-banner-space, 0px));
 }
