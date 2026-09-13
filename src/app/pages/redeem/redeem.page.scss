@@ -1,0 +1,135 @@
+.rd-wrap {
+  padding: calc(14px + var(--ion-safe-area-top, 0px)) 20px calc(24px + var(--ion-safe-area-bottom, 0px));
+}
+
+.rd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+
+  h1 {
+    font-size: 17px;
+    margin: 0;
+    font-weight: 700;
+  }
+}
+
+.rd-back {
+  appearance: none;
+  background: none;
+  border: none;
+  color: #eef2ff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.rd-header-spacer {
+  width: 32px;
+}
+
+.rd-balance-card {
+  text-align: center;
+  margin-bottom: 6px;
+}
+
+.rd-balance-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 30px;
+  font-weight: 800;
+}
+
+.rd-balance-label {
+  color: var(--bb-text-dim);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.rd-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--bb-text-dim);
+  font-size: 12px;
+  margin: 0 4px 12px;
+}
+
+.rd-mobile-input {
+  --background: var(--bb-bg-elevated);
+  --color: #eef2ff;
+  --placeholder-color: var(--bb-text-dim);
+  --padding-start: 16px;
+  --padding-end: 16px;
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-md);
+  height: 54px;
+  font-size: 16px;
+  letter-spacing: 1px;
+  margin-bottom: 20px;
+}
+
+.rd-submit-btn {
+  height: 54px;
+}
+
+.rd-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  border-radius: var(--bb-radius-sm);
+  color: #fca5a5;
+  font-size: 12.5px;
+  line-height: 1.4;
+
+  ion-icon {
+    font-size: 17px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+}
+
+.rd-result {
+  text-align: center;
+  padding: 20px 0 4px;
+}
+
+.rd-result-icon {
+  font-size: 56px;
+
+  &.success {
+    color: #22c55e;
+  }
+}
+
+.rd-result-title {
+  font-size: 20px;
+  font-weight: 800;
+  margin: 10px 0 4px;
+}
+
+.rd-result-sub {
+  color: var(--bb-text-dim);
+  font-size: 14px;
+  margin: 0 0 22px;
+}
+
+.rd-progress {
+  font-size: 22px;
+  font-weight: 800;
+  color: #eef2ff;
+  margin-bottom: 4px;
+}

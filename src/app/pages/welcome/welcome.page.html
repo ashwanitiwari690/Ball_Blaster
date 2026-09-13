@@ -1,0 +1,28 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="welcome-wrap">
+    <div class="welcome-hero">
+      <div class="welcome-logo-orb">
+        <ion-icon name="planet"></ion-icon>
+      </div>
+      <h1 class="bb-title-logo welcome-title">BALL BLASTER</h1>
+      <p class="welcome-tagline">Shoot &middot; Break &middot; Earn</p>
+    </div>
+
+    <ion-button expand="block" class="bb-btn-primary welcome-play-btn" size="large" (click)="playNow()">
+      <ion-icon name="play" slot="start"></ion-icon>
+      PLAY NOW
+    </ion-button>
+
+    <div class="welcome-grid">
+      <button
+        class="welcome-grid-item"
+        *ngFor="let link of quickLinks"
+        (click)="open(link.path)"
+        type="button"
+      >
+        <ion-icon [name]="link.icon" [style.color]="link.color"></ion-icon>
+        <span>{{ link.label }}</span>
+      </button>
+    </div>
+  </div>
+</ion-content>

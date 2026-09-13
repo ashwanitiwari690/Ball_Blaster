@@ -1,0 +1,68 @@
+.lb-wrap {
+  padding: calc(14px + var(--ion-safe-area-top, 0px)) 20px calc(24px + var(--ion-safe-area-bottom, 0px));
+}
+
+.lb-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+
+  h1 {
+    font-size: 17px;
+    margin: 0;
+    font-weight: 700;
+  }
+}
+
+.lb-back {
+  appearance: none;
+  background: none;
+  border: none;
+  color: #eef2ff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.lb-header-spacer {
+  width: 32px;
+}
+
+.lb-you-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.lb-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #38bdf8, #a855f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 24px;
+    color: #0b0f2b;
+  }
+}
+
+.lb-you-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.lb-you-level {
+  font-size: 12px;
+  color: var(--bb-text-dim);
+}

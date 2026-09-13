@@ -1,0 +1,43 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="pr-wrap" *ngIf="profile$ | async as profile">
+    <div class="pr-hero">
+      <div class="pr-avatar">
+        <ion-icon name="person"></ion-icon>
+      </div>
+      <div class="pr-name">{{ profile.name }}</div>
+      <div class="pr-level">Level {{ profile.level }}</div>
+    </div>
+
+    <div class="bb-stat-grid" *ngIf="wallet$ | async as wallet">
+      <div class="bb-stat-tile">
+        <div class="bb-stat-label">Coin Balance</div>
+        <div class="bb-stat-value">{{ wallet.availableCoins | number }}</div>
+      </div>
+      <div class="bb-stat-tile">
+        <div class="bb-stat-label">High Score</div>
+        <div class="bb-stat-value">{{ profile.highScore | number }}</div>
+      </div>
+      <div class="bb-stat-tile">
+        <div class="bb-stat-label">Games Played</div>
+        <div class="bb-stat-value">{{ profile.gamesPlayed | number }}</div>
+      </div>
+      <div class="bb-stat-tile">
+        <div class="bb-stat-label">Lifetime Earned</div>
+        <div class="bb-stat-value">{{ wallet.lifetimeEarned | number }}</div>
+      </div>
+    </div>
+
+    <div class="bb-section-title">Account</div>
+    <div class="pr-links">
+      <button class="pr-link-row" *ngFor="let link of links" (click)="open(link.path)" type="button">
+        <ion-icon [name]="link.icon"></ion-icon>
+        <span>{{ link.label }}</span>
+        <ion-icon name="chevron-forward" class="pr-chevron"></ion-icon>
+      </button>
+    </div>
+
+    <div class="bb-bottom-nav-spacer"></div>
+  </div>
+
+  <app-bottom-nav active="profile"></app-bottom-nav>
+</ion-content>

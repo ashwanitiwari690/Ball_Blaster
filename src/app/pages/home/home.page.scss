@@ -1,0 +1,167 @@
+.home-wrap {
+  padding: calc(16px + var(--ion-safe-area-top, 0px)) 20px 0;
+}
+
+.home-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.home-avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #38bdf8, #a855f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  ion-icon {
+    font-size: 22px;
+    color: #0b0f2b;
+  }
+}
+
+.home-id {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-name {
+  font-weight: 700;
+  font-size: 15px;
+}
+
+.home-level {
+  font-size: 12px;
+  color: var(--bb-text-dim);
+}
+
+.home-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.home-bell {
+  appearance: none;
+  background: var(--bb-bg-elevated);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #eef2ff;
+
+  ion-icon {
+    font-size: 18px;
+  }
+}
+
+.home-logo-block {
+  text-align: center;
+  margin: 18px 0 22px;
+}
+
+.home-title {
+  font-size: 28px;
+  margin: 0;
+}
+
+.home-play-btn {
+  height: 54px;
+  font-size: 16px;
+  margin-bottom: 8px;
+}
+
+.home-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.home-grid-item {
+  appearance: none;
+  background: var(--bb-bg-elevated);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-md);
+  padding: 16px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #eef2ff;
+  font-size: 12px;
+  font-weight: 600;
+
+  ion-icon {
+    font-size: 24px;
+  }
+}
+
+.home-progress-grid {
+  margin-bottom: 6px;
+}
+
+.home-progress-coins {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #22c55e;
+}
+
+.home-daily-banner {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 14px;
+  background: linear-gradient(120deg, #7c2d12, #431407 75%);
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  border-radius: var(--bb-radius-md);
+  padding: 14px 16px;
+  color: #eef2ff;
+  text-align: left;
+}
+
+.home-daily-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  ion-icon {
+    font-size: 22px;
+    color: #fbbf24;
+  }
+}
+
+.home-daily-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.home-daily-title {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.home-daily-sub {
+  font-size: 11.5px;
+  color: var(--bb-text-dim);
+}
+
+.home-daily-chevron {
+  color: var(--bb-text-dim);
+}

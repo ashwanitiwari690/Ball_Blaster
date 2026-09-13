@@ -1,0 +1,88 @@
+.cd-wrap {
+  padding: calc(14px + var(--ion-safe-area-top, 0px)) 20px calc(24px + var(--ion-safe-area-bottom, 0px));
+}
+
+.cd-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+
+  h1 {
+    font-size: 17px;
+    margin: 0;
+    font-weight: 700;
+  }
+}
+
+.cd-back {
+  appearance: none;
+  background: none;
+  border: none;
+  color: #eef2ff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.cd-header-spacer {
+  width: 32px;
+}
+
+.cd-preview {
+  height: 220px;
+  border-radius: var(--bb-radius-lg);
+  border: 1px solid var(--bb-surface-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 18px;
+
+  ion-icon {
+    font-size: 96px;
+  }
+}
+
+.cd-name {
+  font-size: 22px;
+  margin: 0 0 6px;
+}
+
+.cd-desc {
+  color: var(--bb-text-dim);
+  font-size: 14px;
+  margin: 0 0 16px;
+}
+
+.cd-price-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 16px;
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.cd-price-value {
+  font-size: 20px;
+  font-weight: 800;
+}
+
+.cd-btn {
+  height: 52px;
+  margin-bottom: 8px;
+}
+
+.cd-preview-desc {
+  color: var(--bb-text-dim);
+  font-size: 13px;
+  line-height: 1.5;
+}

@@ -1,0 +1,152 @@
+.dr-wrap {
+  padding: calc(14px + var(--ion-safe-area-top, 0px)) 20px calc(24px + var(--ion-safe-area-bottom, 0px));
+}
+
+.dr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+
+  h1 {
+    font-size: 20px;
+    margin: 0;
+    font-weight: 800;
+  }
+}
+
+.dr-back {
+  appearance: none;
+  background: none;
+  border: none;
+  color: #eef2ff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.dr-header-spacer {
+  width: 32px;
+}
+
+.dr-subtitle {
+  color: var(--bb-text-dim);
+  font-size: 13px;
+  margin: 0 0 18px;
+}
+
+.dr-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.dr-day-card {
+  position: relative;
+  background: var(--bb-bg-elevated);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-md);
+  padding: 14px 8px;
+  text-align: center;
+
+  &.claimed {
+    opacity: 0.55;
+  }
+
+  &.current {
+    border-color: var(--bb-gold);
+    box-shadow: 0 0 16px rgba(251, 191, 36, 0.35);
+  }
+}
+
+.dr-check {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  color: #22c55e;
+  font-size: 15px;
+}
+
+.dr-day-label {
+  font-size: 12px;
+  color: var(--bb-text-dim);
+  margin-bottom: 6px;
+  font-weight: 600;
+}
+
+.dr-coin-icon {
+  margin: 2px 0;
+}
+
+.dr-day-reward {
+  font-weight: 800;
+  font-size: 14px;
+  margin-top: 2px;
+}
+
+.dr-chest-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: linear-gradient(120deg, #7c2d12, #431407 70%);
+  border: 1px solid rgba(251, 146, 60, 0.4);
+  border-radius: var(--bb-radius-lg);
+  padding: 18px 20px;
+  margin-bottom: 20px;
+  position: relative;
+
+  &.claimed {
+    opacity: 0.55;
+  }
+
+  &.current {
+    border-color: var(--bb-gold);
+    box-shadow: 0 0 22px rgba(251, 191, 36, 0.4);
+  }
+}
+
+.dr-chest-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(251, 191, 36, 0.18);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 28px;
+    color: #fbbf24;
+  }
+}
+
+.dr-chest-info .dr-day-reward {
+  font-size: 20px;
+}
+
+.dr-claim-btn {
+  height: 54px;
+}
+
+.dr-double-btn {
+  height: 48px;
+  margin-top: 10px;
+}
+
+.dr-doubled-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 13px;
+  color: #22c55e;
+  font-weight: 600;
+}

@@ -1,0 +1,35 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="st-wrap" *ngIf="settings$ | async as settings">
+    <div class="st-header">
+      <button class="st-back" (click)="goBack()" type="button">
+        <ion-icon name="chevron-back"></ion-icon>
+      </button>
+      <h1>Settings</h1>
+      <span class="st-header-spacer"></span>
+    </div>
+
+    <div class="bb-section-title">Preferences</div>
+    <div class="bb-card st-row">
+      <ion-icon name="volume-high-outline"></ion-icon>
+      <span class="st-row-label">Sound Effects</span>
+      <ion-toggle [checked]="settings.soundEnabled" (ionChange)="toggleSound($event.detail.checked)"></ion-toggle>
+    </div>
+    <div class="bb-card st-row">
+      <ion-icon name="musical-notes-outline"></ion-icon>
+      <span class="st-row-label">Music</span>
+      <ion-toggle [checked]="settings.musicEnabled" (ionChange)="toggleMusic($event.detail.checked)"></ion-toggle>
+    </div>
+    <div class="bb-card st-row">
+      <ion-icon name="phone-portrait-outline"></ion-icon>
+      <span class="st-row-label">Haptics</span>
+      <ion-toggle [checked]="settings.hapticsEnabled" (ionChange)="toggleHaptics($event.detail.checked)"></ion-toggle>
+    </div>
+
+
+    <div class="bb-section-title">Danger Zone</div>
+    <ion-button expand="block" color="danger" fill="outline" class="st-reset-btn" (click)="confirmReset()">
+      <ion-icon name="trash-outline" slot="start"></ion-icon>
+      Reset Level
+    </ion-button>
+  </div>
+</ion-content>

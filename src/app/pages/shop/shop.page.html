@@ -1,0 +1,53 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="shop-wrap">
+    <div class="shop-header">
+      <h1>Shop</h1>
+      <span class="bb-pill shop-coin-pill" *ngIf="wallet$ | async as wallet">
+        <app-coin-icon [size]="16"></app-coin-icon>
+        {{ wallet.availableCoins | number }}
+      </span>
+    </div>
+
+    <div class="shop-tabs">
+      <button
+        class="shop-tab"
+        *ngFor="let c of categories"
+        [class.active]="category === c.key"
+        (click)="setCategory(c.key)"
+        type="button"
+      >
+        {{ c.label }}
+      </button>
+    </div>
+
+    <div class="shop-list" *ngIf="items$ | async as items">
+      <div class="shop-item" *ngFor="let item of items" (click)="openItem(item.id, item.category)">
+        <div class="shop-item-icon" [style.background]="item.accent + '22'" [style.color]="item.accent">
+          <ion-icon [name]="item.icon"></ion-icon>
+        </div>
+        <div class="shop-item-info">
+          <div class="shop-item-name">{{ item.name }}</div>
+          <div class="shop-item-price" *ngIf="item.price > 0">
+            <app-coin-icon [size]="14"></app-coin-icon>
+            {{ item.price | number }}
+          </div>
+          <div class="shop-item-price" *ngIf="item.price === 0">Included</div>
+        </div>
+        <ion-button
+          size="small"
+          [fill]="item.owned ? 'outline' : 'solid'"
+          [class]="item.owned ? 'bb-btn-outline shop-owned-btn' : 'bb-btn-primary'"
+          [class.shop-buy-btn-unaffordable]="!item.owned && !item.affordable"
+          [disabled]="item.owned"
+          (click)="buy(item.id, $event)"
+        >
+          {{ item.owned ? 'Owned' : 'Buy' }}
+        </ion-button>
+      </div>
+    </div>
+
+    <div class="bb-bottom-nav-spacer"></div>
+  </div>
+
+  <app-bottom-nav active="shop"></app-bottom-nav>
+</ion-content>

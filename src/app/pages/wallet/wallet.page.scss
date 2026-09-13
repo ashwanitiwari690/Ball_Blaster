@@ -1,0 +1,143 @@
+.wallet-wrap {
+  padding: calc(14px + var(--ion-safe-area-top, 0px)) 20px 0;
+}
+
+.wallet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+
+  h1 {
+    font-size: 17px;
+    margin: 0;
+    font-weight: 700;
+  }
+}
+
+.wallet-back, .wallet-help {
+  appearance: none;
+  background: none;
+  border: none;
+  color: #eef2ff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  ion-icon {
+    font-size: 22px;
+  }
+}
+
+.wallet-balance-card {
+  background: linear-gradient(160deg, #1e3a8a, #0b0f2b 70%);
+  border: 1px solid rgba(56, 189, 248, 0.3);
+  border-radius: var(--bb-radius-lg);
+  padding: 24px 20px;
+  text-align: center;
+  margin-bottom: 16px;
+  box-shadow: var(--bb-shadow-glow);
+}
+
+.wallet-balance-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #bfdbfe;
+  font-size: 13px;
+  margin-bottom: 6px;
+
+  ion-icon {
+    color: #fbbf24;
+  }
+}
+
+.wallet-balance-value {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 40px;
+  font-weight: 800;
+}
+
+.wallet-redeem-btn {
+  height: 48px;
+  margin-top: 16px;
+}
+
+.wallet-redeem-locked {
+  margin-top: 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+
+  strong {
+    font-size: 15px;
+    font-weight: 800;
+  }
+
+  span {
+    font-size: 12px;
+    color: var(--bb-text-dim);
+  }
+}
+
+.wallet-ad-card {
+  appearance: none;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(120deg, #1e3a8a55, var(--bb-bg-elevated));
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-md);
+  padding: 12px 14px;
+  color: #eef2ff;
+  margin-bottom: 16px;
+
+  &:disabled {
+    opacity: 0.5;
+  }
+
+  > ion-icon:last-child {
+    color: var(--bb-text-dim);
+  }
+}
+
+.wallet-ad-icon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(56, 189, 248, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  ion-icon {
+    font-size: 20px;
+    color: var(--bb-cyan);
+  }
+}
+
+.wallet-ad-info {
+  flex: 1;
+  text-align: left;
+}
+
+.wallet-ad-title {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.wallet-ad-sub {
+  font-size: 11px;
+  color: var(--bb-text-dim);
+  margin-top: 7px !important;
+}
+

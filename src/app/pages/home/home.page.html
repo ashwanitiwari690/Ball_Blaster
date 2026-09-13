@@ -1,0 +1,82 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="home-wrap" *ngIf="profile$ | async as profile">
+    <ng-container *ngIf="wallet$ | async as wallet">
+      <div class="home-header">
+        <div class="home-avatar">
+          <ion-icon name="person"></ion-icon>
+        </div>
+        <div class="home-id">
+          <div class="home-name">{{ profile.name }}</div>
+          <div class="home-level">Level {{ profile.level }}</div>
+        </div>
+        <div class="home-header-right">
+          <app-coin-pill [coins]="wallet.availableCoins"></app-coin-pill>
+          <button class="home-bell" (click)="open('/wallet')" type="button">
+            <ion-icon name="notifications"></ion-icon>
+          </button>
+        </div>
+      </div>
+
+      <div class="home-logo-block">
+        <h1 class="bb-title-logo home-title">BALL BLASTER</h1>
+      </div>
+
+      <ion-button expand="block" class="bb-btn-primary home-play-btn" size="large" (click)="playNow()">
+        <ion-icon name="play" slot="start"></ion-icon>
+        PLAY NOW
+      </ion-button>
+
+      <div class="bb-section-title">Quick Access</div>
+      <div class="home-grid">
+        <button
+          class="home-grid-item"
+          *ngFor="let item of quickAccess"
+          (click)="open(item.path)"
+          type="button"
+        >
+          <ion-icon [name]="item.icon" [style.color]="item.color"></ion-icon>
+          <span>{{ item.label }}</span>
+        </button>
+      </div>
+
+      <div class="bb-section-title">Today's Progress</div>
+      <div class="bb-stat-grid home-progress-grid">
+        <div class="bb-stat-tile">
+          <div class="bb-stat-label">Today Earned</div>
+          <div class="bb-stat-value home-progress-coins">
+            <app-coin-icon [size]="15"></app-coin-icon>
+            +{{ wallet.todayEarned | number }}
+          </div>
+        </div>
+        <div class="bb-stat-tile">
+          <div class="bb-stat-label">High Score</div>
+          <div class="bb-stat-value">{{ profile.highScore | number }}</div>
+        </div>
+      </div>
+
+      <button
+        class="home-daily-banner"
+        *ngIf="dailyReward$ | async as daily"
+        (click)="open('/daily-rewards')"
+        type="button"
+      >
+        <div class="home-daily-icon">
+          <ion-icon name="gift"></ion-icon>
+        </div>
+        <div class="home-daily-info">
+          <div class="home-daily-title">
+            {{ daily.claimedToday ? 'Daily reward claimed' : 'Day ' + daily.streakDay + ' reward ready!' }}
+          </div>
+          <div class="home-daily-sub">
+            {{ daily.claimedToday ? 'Come back tomorrow for Day ' + (daily.streakDay % 7 + 1) : 'Tap to claim +' + daily.rewards[daily.streakDay - 1] + ' coins' }}
+          </div>
+        </div>
+        <ion-icon name="chevron-forward" class="home-daily-chevron"></ion-icon>
+      </button>
+
+      <div class="bb-bottom-nav-spacer"></div>
+    </ng-container>
+  </div>
+
+  <app-bottom-nav active="home"></app-bottom-nav>
+</ion-content>

@@ -1,0 +1,38 @@
+.bb-bottom-nav {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 8px 6px calc(8px + var(--ion-safe-area-bottom, 0px));
+  background: rgba(15, 22, 56, 0.92);
+  backdrop-filter: blur(10px);
+  border-top: 1px solid var(--bb-surface-border);
+}
+
+.bb-bottom-nav-item {
+  appearance: none;
+  background: none;
+  border: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  color: var(--bb-text-dim);
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 14px;
+  border-radius: 12px;
+
+  ion-icon {
+    font-size: 22px;
+  }
+
+  &.active {
+    color: var(--bb-cyan);
+    background: rgba(56, 189, 248, 0.12);
+  }
+}

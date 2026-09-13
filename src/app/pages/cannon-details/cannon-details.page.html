@@ -1,0 +1,57 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="cd-wrap" *ngIf="item as it">
+    <div class="cd-header">
+      <button class="cd-back" (click)="goBack()" type="button">
+        <ion-icon name="chevron-back"></ion-icon>
+      </button>
+      <h1>{{ it.name }}</h1>
+      <span class="cd-header-spacer"></span>
+    </div>
+
+    <div class="cd-preview" [style.background]="'radial-gradient(circle at 50% 35%, ' + it.accent + '33, #0b0f2b 72%)'">
+      <ion-icon [name]="it.icon" [style.color]="it.accent"></ion-icon>
+    </div>
+
+    <h2 class="cd-name">{{ it.name }}</h2>
+    <p class="cd-desc">{{ it.description }}</p>
+
+    <div class="bb-card cd-price-card" *ngIf="it.price > 0">
+      <app-coin-icon [size]="22"></app-coin-icon>
+      <span class="cd-price-value">{{ it.price | number }}</span>
+    </div>
+
+    <ng-container *ngIf="state$ | async as state">
+      <ion-button
+        *ngIf="!state.owned"
+        expand="block"
+        class="bb-btn-primary cd-btn"
+        (click)="buyNow()"
+      >
+        Buy Now
+      </ion-button>
+      <ion-button
+        *ngIf="state.owned && !state.equipped"
+        expand="block"
+        class="bb-btn-primary cd-btn"
+        (click)="equip()"
+      >
+        Equip
+      </ion-button>
+      <ion-button
+        *ngIf="state.owned && state.equipped"
+        expand="block"
+        fill="outline"
+        class="bb-btn-outline cd-btn"
+        disabled
+      >
+        <ion-icon name="checkmark" slot="start"></ion-icon>
+        Equipped
+      </ion-button>
+    </ng-container>
+
+    <div class="bb-section-title">Preview</div>
+    <div class="bb-card cd-preview-desc">
+      {{ it.previewDescription }}
+    </div>
+  </div>
+</ion-content>

@@ -1,0 +1,42 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="lb-wrap" *ngIf="profile$ | async as profile">
+    <div class="lb-header">
+      <button class="lb-back" (click)="goBack()" type="button">
+        <ion-icon name="chevron-back"></ion-icon>
+      </button>
+      <h1>Leaderboard</h1>
+      <span class="lb-header-spacer"></span>
+    </div>
+
+    <div class="bb-proto-banner">
+      <ion-icon name="construct-outline"></ion-icon>
+      <span>Global rankings need the backend to compare players. Showing your own local stats only.</span>
+    </div>
+
+    <div class="bb-card lb-you-card">
+      <div class="lb-avatar">
+        <ion-icon name="person"></ion-icon>
+      </div>
+      <div class="lb-you-info">
+        <div class="lb-you-name">{{ profile.name }}</div>
+        <div class="lb-you-level">Level {{ profile.level }}</div>
+      </div>
+    </div>
+
+    <div class="bb-stat-grid">
+      <div class="bb-stat-tile">
+        <div class="bb-stat-label">High Score</div>
+        <div class="bb-stat-value">{{ profile.highScore | number }}</div>
+      </div>
+      <div class="bb-stat-tile">
+        <div class="bb-stat-label">Games Played</div>
+        <div class="bb-stat-value">{{ profile.gamesPlayed | number }}</div>
+      </div>
+    </div>
+
+    <div class="bb-empty-state">
+      <ion-icon name="trophy-outline"></ion-icon>
+      <div>Global Top Players will appear here once the server-side leaderboard is connected.</div>
+    </div>
+  </div>
+</ion-content>

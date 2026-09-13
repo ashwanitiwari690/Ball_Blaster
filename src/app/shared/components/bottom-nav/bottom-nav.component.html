@@ -1,0 +1,12 @@
+<div class="bb-bottom-nav">
+  <button
+    *ngFor="let item of items"
+    class="bb-bottom-nav-item"
+    [class.active]="isActive(item)"
+    (click)="go(item.path)"
+    type="button"
+  >
+    <ion-icon [name]="item.icon"></ion-icon>
+    <span>{{ item.label }}</span>
+  </button>
+</div>

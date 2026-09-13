@@ -1,0 +1,22 @@
+<ion-app>
+  <ion-router-outlet *ngIf="connectivity.online()"></ion-router-outlet>
+
+  <div class="offline-screen" *ngIf="!connectivity.online()">
+    <div class="offline-card">
+      <!-- Inline SVG, not ion-icon: ion-icon fetches its glyph over the network,
+           which is exactly what isn't available on the one screen that must
+           still render correctly while genuinely offline. -->
+      <div class="offline-icon">
+        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M2 2l20 20" />
+          <path d="M8.5 8.5A5 5 0 0 0 7 18h1" />
+          <path d="M16 18h1a4 4 0 0 0 1-7.87" />
+          <path d="M11.5 5.05A6.5 6.5 0 0 1 19.8 11" />
+        </svg>
+      </div>
+      <h1>NO INTERNET CONNECTION</h1>
+      <p>Ball Blaster needs an internet connection to load ads and save your rewards. Please reconnect to keep playing.</p>
+      <ion-button expand="block" class="bb-btn-primary" (click)="connectivity.recheck()">TRY AGAIN</ion-button>
+    </div>
+  </div>
+</ion-app>

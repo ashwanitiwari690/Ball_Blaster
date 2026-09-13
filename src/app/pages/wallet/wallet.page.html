@@ -1,0 +1,52 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="wallet-wrap" *ngIf="wallet$ | async as wallet">
+    <div class="wallet-header">
+      <button class="wallet-back" (click)="goBack()" type="button">
+        <ion-icon name="chevron-back"></ion-icon>
+      </button>
+      <h1>My Wallet</h1>
+      <button class="wallet-help" type="button">
+        <ion-icon name="help-circle-outline"></ion-icon>
+      </button>
+    </div>
+
+    <div class="wallet-balance-card">
+      <div class="wallet-balance-label">
+        <app-coin-icon [size]="14"></app-coin-icon>
+        Available Balance
+      </div>
+      <div class="wallet-balance-value">
+        <app-coin-icon [size]="30"></app-coin-icon>
+        {{ wallet.availableCoins | number }}
+      </div>
+
+      <ion-button
+        *ngIf="wallet.availableCoins >= minRedemptionCoins"
+        expand="block"
+        class="bb-btn-primary wallet-redeem-btn"
+        (click)="goRedeem()"
+      >
+        REDEEM
+      </ion-button>
+      <div class="wallet-redeem-locked" *ngIf="wallet.availableCoins < minRedemptionCoins">
+        <strong>{{ wallet.availableCoins | number }} / {{ minRedemptionCoins | number }}</strong>
+        <span>Redeem unlocks at {{ minRedemptionCoins | number }} coins</span>
+      </div>
+    </div>
+
+    <button class="wallet-ad-card" (click)="watchAd()" [disabled]="watchingAd() || (adsRemaining$ | async) === 0" type="button">
+      <div class="wallet-ad-icon">
+        <ion-icon [name]="watchingAd() ? 'hourglass' : 'play-circle'"></ion-icon>
+      </div>
+      <div class="wallet-ad-info">
+        <div class="wallet-ad-title">{{ watchingAd() ? 'Watching ad…' : 'Watch Ad for +5 Coins' }}</div>
+        <div class="wallet-ad-sub">{{ adsRemaining$ | async }} left today</div>
+      </div>
+      <ion-icon name="chevron-forward"></ion-icon>
+    </button>
+
+    <div class="bb-bottom-nav-spacer"></div>
+  </div>
+
+  <app-bottom-nav></app-bottom-nav>
+</ion-content>

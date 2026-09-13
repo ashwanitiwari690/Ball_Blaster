@@ -1,0 +1,104 @@
+/* Ball Blaster theme — dark neon arcade, matching the product mockups. */
+
+:root {
+  /* Ionic brand colors mapped onto the neon palette */
+  --ion-color-primary: #38bdf8;
+  --ion-color-primary-rgb: 56, 189, 248;
+  --ion-color-primary-contrast: #0b0f2b;
+  --ion-color-primary-contrast-rgb: 11, 15, 43;
+  --ion-color-primary-shade: #31a5da;
+  --ion-color-primary-tint: #4cc3f9;
+
+  --ion-color-secondary: #a855f7;
+  --ion-color-secondary-rgb: 168, 85, 247;
+  --ion-color-secondary-contrast: #ffffff;
+  --ion-color-secondary-contrast-rgb: 255, 255, 255;
+  --ion-color-secondary-shade: #944be0;
+  --ion-color-secondary-tint: #b166f8;
+
+  --ion-color-tertiary: #fbbf24;
+  --ion-color-tertiary-rgb: 251, 191, 36;
+  --ion-color-tertiary-contrast: #0b0f2b;
+  --ion-color-tertiary-contrast-rgb: 11, 15, 43;
+  --ion-color-tertiary-shade: #ddaa20;
+  --ion-color-tertiary-tint: #fbc63a;
+
+  --ion-color-success: #22c55e;
+  --ion-color-success-rgb: 34, 197, 94;
+  --ion-color-success-contrast: #06210f;
+  --ion-color-success-contrast-rgb: 6, 33, 15;
+  --ion-color-success-shade: #1ead52;
+  --ion-color-success-tint: #38cb6e;
+
+  --ion-color-warning: #f59e0b;
+  --ion-color-warning-rgb: 245, 158, 11;
+  --ion-color-warning-contrast: #251400;
+  --ion-color-warning-contrast-rgb: 37, 20, 0;
+  --ion-color-warning-shade: #d88b0a;
+  --ion-color-warning-tint: #f6a723;
+
+  --ion-color-danger: #ef4444;
+  --ion-color-danger-rgb: 239, 68, 68;
+  --ion-color-danger-contrast: #ffffff;
+  --ion-color-danger-contrast-rgb: 255, 255, 255;
+  --ion-color-danger-shade: #d23c3c;
+  --ion-color-danger-tint: #f15757;
+
+  --ion-color-medium: #64748b;
+  --ion-color-medium-rgb: 100, 116, 139;
+  --ion-color-medium-contrast: #ffffff;
+  --ion-color-medium-contrast-rgb: 255, 255, 255;
+  --ion-color-medium-shade: #58677a;
+  --ion-color-medium-tint: #748296;
+
+  --ion-color-light: #1e2749;
+  --ion-color-light-rgb: 30, 39, 73;
+  --ion-color-light-contrast: #ffffff;
+  --ion-color-light-contrast-rgb: 255, 255, 255;
+  --ion-color-light-shade: #1a2240;
+  --ion-color-light-tint: #343c5c;
+
+  --ion-color-dark: #eef2ff;
+  --ion-color-dark-rgb: 238, 242, 255;
+  --ion-color-dark-contrast: #0b0f2b;
+  --ion-color-dark-contrast-rgb: 11, 15, 43;
+  --ion-color-dark-shade: #d1d5e0;
+  --ion-color-dark-tint: #f0f3ff;
+
+  /* App-level surface tokens */
+  --ion-background-color: #0b0f2b;
+  --ion-background-color-rgb: 11, 15, 43;
+  --ion-text-color: #eef2ff;
+  --ion-text-color-rgb: 238, 242, 255;
+
+  --ion-toolbar-background: #0f1638;
+  --ion-tab-bar-background: #0f1638;
+  --ion-item-background: #141a3d;
+  --ion-card-background: #141a3d;
+  --ion-border-color: rgba(148, 163, 184, 0.16);
+
+  /* Ball Blaster custom tokens */
+  --bb-bg: #0b0f2b;
+  --bb-bg-elevated: #141a3d;
+  --bb-bg-elevated-2: #1a2148;
+  --bb-surface-border: rgba(148, 163, 184, 0.16);
+  --bb-gold: #fbbf24;
+  --bb-cyan: #38bdf8;
+  --bb-purple: #a855f7;
+  --bb-green: #22c55e;
+  --bb-red: #ef4444;
+  --bb-text-dim: #94a3b8;
+  --bb-radius-lg: 20px;
+  --bb-radius-md: 14px;
+  --bb-radius-sm: 10px;
+  --bb-shadow-glow: 0 0 24px rgba(56, 189, 248, 0.25);
+}
+
+.ion-color-tertiary {
+  --ion-color-base: var(--ion-color-tertiary);
+  --ion-color-base-rgb: var(--ion-color-tertiary-rgb);
+  --ion-color-contrast: var(--ion-color-tertiary-contrast);
+  --ion-color-contrast-rgb: var(--ion-color-tertiary-contrast-rgb);
+  --ion-color-shade: var(--ion-color-tertiary-shade);
+  --ion-color-tint: var(--ion-color-tertiary-tint);
+}

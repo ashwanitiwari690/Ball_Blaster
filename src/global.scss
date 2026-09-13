@@ -1,0 +1,225 @@
+/*
+ * App Global CSS
+ * ----------------------------------------------------------------------------
+ * Put style rules here that you want to apply globally. These styles are for
+ * the entire app and not just one component. Additionally, this file can be
+ * used as an entry point to import other CSS/Sass files to be included in the
+ * output CSS.
+ * For more information on global stylesheets, visit the documentation:
+ * https://ionicframework.com/docs/layout/global-stylesheets
+ */
+
+/* Core CSS required for Ionic components to work properly */
+@import "@ionic/angular/css/core.css";
+
+/* Basic CSS for apps built with Ionic */
+@import "@ionic/angular/css/normalize.css";
+@import "@ionic/angular/css/structure.css";
+@import "@ionic/angular/css/typography.css";
+@import "@ionic/angular/css/display.css";
+
+/* Optional CSS utils that can be commented out */
+@import "@ionic/angular/css/padding.css";
+@import "@ionic/angular/css/float-elements.css";
+@import "@ionic/angular/css/text-alignment.css";
+@import "@ionic/angular/css/text-transformation.css";
+@import "@ionic/angular/css/flex-utils.css";
+
+/**
+ * Ionic Dark Mode
+ * -----------------------------------------------------
+ * For more info, please see:
+ * https://ionicframework.com/docs/theming/dark-mode
+ */
+
+/* Ball Blaster is an always-dark neon arcade UI — it does not follow the
+   system light/dark preference, so the system palette import is skipped
+   in favour of the fixed palette defined in theme/variables.scss. */
+/* @import "@ionic/angular/css/palettes/dark.always.css"; */
+/* @import "@ionic/angular/css/palettes/dark.class.css"; */
+/* @import "@ionic/angular/css/palettes/dark.system.css"; */
+
+// ---------------------------------------------------------------------------
+// Shared Ball Blaster utility classes, reused across every page.
+// ---------------------------------------------------------------------------
+
+html, body {
+  height: 100%;
+  // The outer document never scrolls — each page's <ion-content> owns its
+  // own internal scroll region (and Ionic hides that scrollbar by default,
+  // matching native app behaviour). Without this, a tall page grows the
+  // whole document instead, and the browser's native scrollbar appears.
+  overflow: hidden;
+  background: #04050f;
+}
+
+// Ball Blaster is designed mobile-first. On a wide desktop browser (not a
+// real phone or a narrow WebView), constrain the whole app to a phone-sized
+// column instead of stretching every layout full-width — otherwise buttons,
+// grids and HUD elements blow up to unusable sizes on a 1920px window.
+ion-app {
+  max-width: 480px;
+  margin: 0 auto;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  // Establishes a containing block so `position: fixed` descendants (the
+  // bottom nav, overlays) are pinned to this 480px frame instead of the
+  // full browser window.
+  contain: layout;
+  background: radial-gradient(circle at 50% -10%, #1c2450 0%, var(--bb-bg) 55%) fixed;
+  box-shadow: 0 0 80px rgba(0, 0, 0, 0.6);
+}
+
+ion-content {
+  --background: transparent;
+}
+
+// Belt-and-braces: hide any scrollbar chrome that still shows up (e.g. a
+// long list inside a fixed-height container), so nothing ever looks like a
+// desktop web page. Scrolling itself is untouched.
+::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+// ion-content does its actual scrolling inside a Shadow DOM element
+// (its "scroll" part) — a plain `*` selector from this stylesheet cannot
+// reach inside a shadow root at all, which is why the rules above alone
+// don't hide it. `::part()` is the one thing that *is* allowed to pierce
+// the shadow boundary, so it has to be targeted explicitly here.
+ion-content::part(scroll) {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+ion-content::part(scroll)::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.bb-content {
+  --background: radial-gradient(circle at 50% -10%, #1c2450 0%, var(--bb-bg) 55%) fixed;
+}
+
+.bb-card {
+  background: linear-gradient(180deg, var(--bb-bg-elevated-2), var(--bb-bg-elevated));
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-lg);
+  padding: 18px;
+}
+
+.bb-title-logo {
+  font-weight: 800;
+  letter-spacing: 1px;
+  background: linear-gradient(90deg, var(--bb-cyan), var(--bb-purple));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.bb-btn-primary {
+  --background: linear-gradient(90deg, #fbbf24, #f59e0b);
+  --background-activated: linear-gradient(90deg, #f59e0b, #d97706);
+  --color: #241a00;
+  --border-radius: 16px;
+  --box-shadow: 0 8px 24px rgba(251, 191, 36, 0.35);
+  font-weight: 700;
+  letter-spacing: 0.3px;
+}
+
+.bb-btn-outline {
+  --border-color: var(--bb-cyan);
+  --color: var(--bb-cyan);
+  --border-radius: 16px;
+  --border-width: 1.5px;
+  font-weight: 600;
+}
+
+.bb-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 22, 56, 0.85);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.bb-stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.bb-stat-tile {
+  background: var(--bb-bg-elevated);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-md);
+  padding: 12px 14px;
+}
+
+.bb-stat-tile .bb-stat-label {
+  color: var(--bb-text-dim);
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+
+.bb-stat-tile .bb-stat-value {
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.bb-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--bb-text-dim);
+  margin: 18px 4px 10px;
+}
+
+.bb-proto-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+  border-radius: var(--bb-radius-md);
+  padding: 10px 12px;
+  font-size: 12.5px;
+  line-height: 1.4;
+  color: #fde68a;
+  margin-bottom: 14px;
+}
+
+.bb-proto-banner ion-icon {
+  font-size: 18px;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.bb-empty-state {
+  text-align: center;
+  color: var(--bb-text-dim);
+  padding: 48px 20px;
+}
+
+.bb-empty-state ion-icon {
+  font-size: 46px;
+  margin-bottom: 10px;
+  opacity: 0.6;
+}
+
+.bb-bottom-nav-spacer {
+  height: 78px;
+}

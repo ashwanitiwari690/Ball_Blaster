@@ -1,0 +1,77 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="go-wrap" *ngIf="summary() as s">
+    <div class="go-crown">
+      <ion-icon name="trophy"></ion-icon>
+    </div>
+    <h1 class="go-title">GAME OVER</h1>
+
+    <div class="bb-card go-card">
+      <div class="go-row">
+        <span>Score</span>
+        <strong>{{ s.score | number }}</strong>
+      </div>
+      <div class="go-row">
+        <span>Level Reached</span>
+        <strong>{{ s.levelReached }}</strong>
+      </div>
+      <div class="go-row">
+        <span>Coins Earned</span>
+        <strong class="go-coins">+{{ s.outcome.coinsEarned }}</strong>
+      </div>
+      <div class="go-row" *ngIf="doubledCoins()">
+        <span>Ad Bonus (2x)</span>
+        <strong class="go-coins">+{{ s.outcome.coinsEarned }}</strong>
+      </div>
+      <div class="go-divider"></div>
+      <div class="go-row go-row-total">
+        <span>Total Balance</span>
+        <strong>
+          <app-coin-icon [size]="20"></app-coin-icon>
+          {{ s.outcome.wallet.availableCoins | number }}
+        </strong>
+      </div>
+
+      <div class="go-capped" *ngIf="s.outcome.cappedByDailyLimit">
+        <ion-icon name="information-circle"></ion-icon>
+        Daily gameplay coin limit reached — extra coins from this run were not credited.
+      </div>
+    </div>
+
+    <div class="go-processing" *ngIf="processing()">
+      <ion-spinner name="dots"></ion-spinner>
+      Reward processing&hellip;
+    </div>
+    <div class="go-confirmed" *ngIf="!processing()">
+      <ion-icon name="checkmark-circle"></ion-icon>
+      Coins added to your wallet
+    </div>
+
+    <ion-button
+      *ngIf="!processing() && s.outcome.coinsEarned > 0 && !doubledCoins()"
+      expand="block"
+      fill="outline"
+      class="bb-btn-outline go-double-btn"
+      [disabled]="doublingCoins()"
+      (click)="doubleCoins()"
+    >
+      <ion-spinner name="dots" *ngIf="doublingCoins()"></ion-spinner>
+      <ng-container *ngIf="!doublingCoins()">
+        <ion-icon name="play-circle" slot="start"></ion-icon>
+        Watch Ad to 2x Coins Earned
+      </ng-container>
+    </ion-button>
+
+    <ion-button
+      expand="block"
+      class="bb-btn-primary go-btn"
+      size="large"
+      [disabled]="processing() || navigating()"
+      (click)="playAgain()"
+    >
+      PLAY AGAIN
+    </ion-button>
+    <ion-button expand="block" fill="outline" class="bb-btn-outline go-btn" [disabled]="navigating()" (click)="goHome()">
+      HOME
+    </ion-button>
+  </div>
+</ion-content>

@@ -1,0 +1,72 @@
+<ion-content [fullscreen]="true" class="game-content">
+  <div class="game-stage">
+    <canvas #gameCanvas class="game-canvas"></canvas>
+
+    <div class="game-hud-top">
+      <span class="bb-pill game-coin-pill">
+        <app-coin-icon [size]="16"></app-coin-icon>
+        {{ coinsThisRun() }}
+      </span>
+
+      <div class="game-score">
+        <div class="game-score-label">Score</div>
+        <div class="game-score-value">{{ score() | number }}</div>
+      </div>
+
+      <button class="game-pause-btn" (click)="togglePause()" type="button">
+        <ion-icon [name]="paused() ? 'play' : 'pause'"></ion-icon>
+      </button>
+    </div>
+
+    <div class="game-hud-bottom-left">
+      <span class="bb-pill game-level-pill">LVL {{ level() }}</span>
+      <span class="bb-pill game-lives-pill">
+        <ion-icon name="diamond" style="color:#38bdf8"></ion-icon>
+        {{ lives() }}
+      </span>
+    </div>
+
+    <div class="game-multiplier-badge" *ngIf="multiplierActive()">x2</div>
+
+    <div class="game-levelup-banner" *ngIf="showLevelUp()">
+      <div class="game-levelup-title">LEVEL {{ level() }}</div>
+      <div class="game-levelup-sub">+10 bonus coins</div>
+    </div>
+
+    <div class="game-pause-overlay" *ngIf="paused()">
+      <div class="game-pause-card">
+        <h2>PAUSED</h2>
+        <ion-button expand="block" class="bb-btn-primary" (click)="togglePause()">Resume</ion-button>
+        <ion-button expand="block" fill="outline" class="bb-btn-outline" (click)="quitGame()">Quit &amp; Cash Out</ion-button>
+      </div>
+    </div>
+
+    <div class="game-pause-overlay" *ngIf="showContinuePrompt()">
+      <div class="game-pause-card">
+        <h2>OUT OF LIVES</h2>
+        <p class="game-continue-sub">Watch a short ad to continue with 1 life ({{ continueSecondsLeft() }}s)</p>
+        <ion-button
+          expand="block"
+          class="bb-btn-primary"
+          [disabled]="continueAdLoading()"
+          (click)="watchAdToContinue()"
+        >
+          <ion-spinner name="dots" *ngIf="continueAdLoading()"></ion-spinner>
+          <ng-container *ngIf="!continueAdLoading()">
+            <ion-icon name="play-circle" slot="start"></ion-icon>
+            Watch Ad to Continue
+          </ng-container>
+        </ion-button>
+        <ion-button
+          expand="block"
+          fill="outline"
+          class="bb-btn-outline"
+          [disabled]="continueAdLoading()"
+          (click)="declineContinue()"
+        >
+          No Thanks
+        </ion-button>
+      </div>
+    </div>
+  </div>
+</ion-content>

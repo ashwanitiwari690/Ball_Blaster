@@ -1,0 +1,119 @@
+.go-wrap {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  padding: 24px 24px calc(24px + var(--ion-safe-area-bottom, 0px));
+  text-align: center;
+}
+
+.go-crown {
+  width: 76px;
+  height: 76px;
+  margin: 0 auto 14px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle, #fbbf24, #92400e 75%);
+  box-shadow: 0 0 40px rgba(251, 191, 36, 0.5);
+
+  ion-icon {
+    font-size: 38px;
+    color: #241a00;
+  }
+}
+
+.go-title {
+  letter-spacing: 3px;
+  font-size: 26px;
+  margin: 0 0 24px;
+}
+
+.go-card {
+  text-align: left;
+  margin-bottom: 18px;
+}
+
+.go-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  font-size: 15px;
+
+  strong {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 17px;
+  }
+}
+
+.go-coins {
+  color: #22c55e;
+}
+
+.go-divider {
+  height: 1px;
+  background: var(--bb-surface-border);
+  margin: 8px 0;
+}
+
+.go-row-total strong {
+  font-size: 20px;
+  color: #fbbf24;
+}
+
+.go-capped {
+  margin-top: 10px;
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  color: #fde68a;
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  border-radius: var(--bb-radius-sm);
+  padding: 8px 10px;
+  text-align: left;
+
+  ion-icon {
+    flex-shrink: 0;
+    font-size: 16px;
+    margin-top: 1px;
+  }
+}
+
+.go-processing, .go-confirmed {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--bb-text-dim);
+  margin-bottom: 18px;
+
+  ion-spinner {
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.go-confirmed {
+  color: #22c55e;
+
+  ion-icon {
+    font-size: 18px;
+  }
+}
+
+.go-btn {
+  height: 52px;
+  margin-bottom: 10px;
+}
+
+.go-double-btn {
+  height: 48px;
+  margin-bottom: 14px;
+}

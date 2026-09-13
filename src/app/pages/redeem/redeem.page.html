@@ -1,0 +1,79 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="rd-wrap" *ngIf="wallet$ | async as wallet">
+    <div class="rd-header">
+      <button class="rd-back" (click)="goBack()" type="button">
+        <ion-icon name="chevron-back"></ion-icon>
+      </button>
+      <h1>Redeem</h1>
+      <span class="rd-header-spacer"></span>
+    </div>
+
+    <div class="bb-card rd-balance-card">
+      <div class="rd-balance-value">
+        <app-coin-icon [size]="26"></app-coin-icon>
+        {{ wallet.availableCoins | number }}
+      </div>
+      <div class="rd-balance-label">Available Coins</div>
+    </div>
+
+    <!--
+      The success state is checked before eligibility on purpose: a
+      successful redemption drops the balance below minRedemption, which
+      would otherwise flip this to the "locked" view at the exact moment it
+      should be showing the confirmation instead.
+    -->
+    <ng-container [ngSwitch]="state()">
+      <div class="rd-result" *ngSwitchCase="'success'">
+        <ion-icon name="checkmark-circle" class="rd-result-icon success"></ion-icon>
+        <div class="rd-result-title">Redeemed!</div>
+        <p class="rd-result-sub">{{ result()?.coins | number }} coins &rarr; &#8377;{{ result()?.rupees }}</p>
+        <ion-button expand="block" class="bb-btn-primary rd-submit-btn" (click)="dismiss()">Done</ion-button>
+      </div>
+
+      <ng-container *ngSwitchDefault>
+        <ng-container *ngIf="wallet.availableCoins >= minRedemption; else notEligible">
+          <div class="bb-section-title">Payout Mobile Number</div>
+          <p class="rd-hint">
+            <ion-icon name="information-circle-outline"></ion-icon>
+            Coins are redeemed to this number once approved.
+          </p>
+
+          <ion-input
+            class="rd-mobile-input"
+            type="tel"
+            inputmode="numeric"
+            maxlength="10"
+            placeholder="10-digit mobile number"
+            [disabled]="isLoading"
+            [value]="mobileNumber"
+            (ionInput)="onMobileNumberInput($event.detail.value ?? '')"
+          ></ion-input>
+
+          <ion-button
+            expand="block"
+            class="bb-btn-primary rd-submit-btn"
+            [disabled]="!mobileNumberValid || isLoading || isBlockedByDuplicate(wallet.availableCoins)"
+            (click)="submit(wallet.availableCoins)"
+          >
+            <ion-spinner name="dots" *ngIf="isLoading"></ion-spinner>
+            <span *ngIf="!isLoading">Request Redemption</span>
+          </ion-button>
+
+          <div class="rd-error" *ngIf="state() === 'error'">
+            <ion-icon name="alert-circle-outline"></ion-icon>
+            <span *ngIf="errorCode() === 'DUPLICATE_CONVERSION'">This redemption was already processed for this number.</span>
+            <span *ngIf="errorCode() !== 'DUPLICATE_CONVERSION'">{{ errorMessage() || 'Something went wrong. Please try again.' }}</span>
+          </div>
+        </ng-container>
+
+        <ng-template #notEligible>
+          <div class="bb-empty-state">
+            <ion-icon name="lock-closed-outline"></ion-icon>
+            <div class="rd-progress">{{ wallet.availableCoins | number }} / {{ minRedemption | number }}</div>
+            <div>Redeem unlocks at {{ minRedemption | number }} coins</div>
+          </div>
+        </ng-template>
+      </ng-container>
+    </ng-container>
+  </div>
+</ion-content>

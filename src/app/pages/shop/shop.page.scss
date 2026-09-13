@@ -1,0 +1,105 @@
+.shop-wrap {
+  padding: calc(14px + var(--ion-safe-area-top, 0px)) 20px 0;
+}
+
+.shop-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+
+  h1 {
+    font-size: 20px;
+    margin: 0;
+    font-weight: 800;
+  }
+}
+
+.shop-coin-pill {
+  color: #fbbf24;
+}
+
+.shop-tabs {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  margin-bottom: 6px;
+}
+
+.shop-tab {
+  appearance: none;
+  flex-shrink: 0;
+  background: var(--bb-bg-elevated);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: 999px;
+  padding: 8px 16px;
+  color: var(--bb-text-dim);
+  font-size: 13px;
+  font-weight: 700;
+
+  &.active {
+    color: #0b0f2b;
+    background: linear-gradient(90deg, var(--bb-cyan), #60a5fa);
+    border-color: transparent;
+  }
+}
+
+.shop-list {
+  margin-top: 12px;
+  padding-bottom: 8px;
+}
+
+.shop-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: var(--bb-bg-elevated);
+  border: 1px solid var(--bb-surface-border);
+  border-radius: var(--bb-radius-md);
+  padding: 12px;
+  margin-bottom: 10px;
+}
+
+.shop-item-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+
+  ion-icon {
+    font-size: 24px;
+  }
+}
+
+.shop-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.shop-item-name {
+  font-weight: 700;
+  font-size: 14px;
+  margin-bottom: 2px;
+}
+
+.shop-item-price {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--bb-text-dim);
+}
+
+.shop-owned-btn {
+  opacity: 0.7;
+}
+
+// Still tappable (not [disabled]) so tapping an item you can't afford yet
+// can offer a "watch an ad for coins" prompt instead of doing nothing.
+.shop-buy-btn-unaffordable {
+  opacity: 0.55;
+}

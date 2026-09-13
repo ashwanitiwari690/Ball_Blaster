@@ -1,0 +1,7 @@
+{
+  "name": "ball-blaster-app",
+  "integrations": {
+    "capacitor": {}
+  },
+  "type": "angular"
+}

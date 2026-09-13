@@ -1,0 +1,68 @@
+<ion-content class="bb-content" [fullscreen]="true">
+  <div class="dr-wrap" *ngIf="view$ | async as view">
+    <div class="dr-header">
+      <button class="dr-back" (click)="goBack()" type="button">
+        <ion-icon name="chevron-back"></ion-icon>
+      </button>
+      <h1>Daily Rewards</h1>
+      <span class="dr-header-spacer"></span>
+    </div>
+    <div class="dr-grid">
+      <div
+        class="dr-day-card"
+        *ngFor="let reward of view.rewards.slice(0, 6); let i = index"
+        [class.claimed]="view.claimedDays[i]"
+        [class.current]="i + 1 === view.streakDay && !view.claimedToday"
+      >
+        <ion-icon *ngIf="view.claimedDays[i]" name="checkmark-circle" class="dr-check"></ion-icon>
+        <div class="dr-day-label">Day {{ i + 1 }}</div>
+        <app-coin-icon [size]="22" class="dr-coin-icon"></app-coin-icon>
+        <div class="dr-day-reward">+{{ reward }}</div>
+      </div>
+    </div>
+
+    <div
+      class="dr-chest-card"
+      [class.claimed]="view.claimedDays[6]"
+      [class.current]="view.streakDay === 7 && !view.claimedToday"
+    >
+      <div class="dr-chest-icon">
+        <ion-icon name="gift"></ion-icon>
+      </div>
+      <div class="dr-chest-info">
+        <div class="dr-day-label">Day 7</div>
+        <div class="dr-day-reward">+{{ view.rewards[6] }}</div>
+      </div>
+      <ion-icon *ngIf="view.claimedDays[6]" name="checkmark-circle" class="dr-check"></ion-icon>
+    </div>
+
+    <ion-button
+      expand="block"
+      class="bb-btn-primary dr-claim-btn"
+      [disabled]="view.claimedToday || claiming()"
+      (click)="claim()"
+    >
+      {{ view.claimedToday ? 'Come back tomorrow' : 'Claim Reward' }}
+    </ion-button>
+
+    <ion-button
+      *ngIf="view.claimedToday && !view.doubledToday"
+      expand="block"
+      fill="outline"
+      class="bb-btn-outline dr-double-btn"
+      [disabled]="doubling()"
+      (click)="doubleToday()"
+    >
+      <ion-spinner name="dots" *ngIf="doubling()"></ion-spinner>
+      <ng-container *ngIf="!doubling()">
+        <ion-icon name="play-circle" slot="start"></ion-icon>
+        Watch Ad to Double (+{{ view.todayRewardCoins }})
+      </ng-container>
+    </ion-button>
+
+    <div class="dr-doubled-note" *ngIf="view.doubledToday">
+      <ion-icon name="checkmark-circle"></ion-icon>
+      Today's reward doubled — nice!
+    </div>
+  </div>
+</ion-content>
