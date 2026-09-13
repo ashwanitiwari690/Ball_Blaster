@@ -21,9 +21,12 @@
         <h1 class="bb-title-logo home-title">BALL BLASTER</h1>
       </div>
 
-      <ion-button expand="block" class="bb-btn-primary home-play-btn" size="large" (click)="playNow()">
-        <ion-icon name="play" slot="start"></ion-icon>
-        PLAY NOW
+      <ion-button expand="block" class="bb-btn-primary home-play-btn" size="large" [disabled]="launchingGame()" (click)="playNow()">
+        <ion-spinner name="dots" *ngIf="launchingGame()"></ion-spinner>
+        <ng-container *ngIf="!launchingGame()">
+          <ion-icon name="play" slot="start"></ion-icon>
+          PLAY NOW
+        </ng-container>
       </ion-button>
 
       <div class="bb-section-title">Quick Access</div>

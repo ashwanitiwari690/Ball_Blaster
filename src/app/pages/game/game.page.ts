@@ -38,7 +38,7 @@ export class GamePage implements AfterViewInit, OnDestroy {
   readonly score = signal(0);
   readonly coinsThisRun = signal(0);
   readonly lives = signal<number>(ECONOMY_CONFIG.startingLives);
-  readonly level = signal(1);
+  readonly level = signal(this.profileService.current.highestLevel);
   readonly multiplierActive = signal(false);
   readonly showLevelUp = signal(false);
   readonly paused = signal(false);
@@ -61,20 +61,28 @@ export class GamePage implements AfterViewInit, OnDestroy {
 
   ngAfterViewInit(): void {
     const canvas = this.canvasRef.nativeElement;
-    this.engine = new BallBlasterEngine(canvas, {
-      onScoreChange: (score) => this.score.set(score),
-      onCoinsChange: (coins) => this.coinsThisRun.set(coins),
-      onLivesChange: (lives) => this.lives.set(lives),
-      onMultiplierChange: (active) => this.multiplierActive.set(active),
-      onGameOver: (result) => this.handleGameOver(result),
-      onLevelChange: (level) => this.handleLevelUp(level),
-      onContinueOffer: () => this.handleContinueOffer(),
-      onShoot: () => this.audioService.shoot(),
-      onBulletImpact: () => this.audioService.ballHit(),
-      onBallDestroyed: (tier) => this.audioService.ballDestroyed(tier),
-      onMultiplierActivated: () => this.audioService.multiplierActivated(),
-      onLifeLost: () => this.audioService.lifeLost(),
-    });
+    // Resume at the highest level ever reached (persisted in PlayerProfileService),
+    // not always level 1 — see "Reset Level" in Settings to start over from scratch.
+    const startLevel = this.profileService.current.highestLevel;
+    this.level.set(startLevel);
+    this.engine = new BallBlasterEngine(
+      canvas,
+      {
+        onScoreChange: (score) => this.score.set(score),
+        onCoinsChange: (coins) => this.coinsThisRun.set(coins),
+        onLivesChange: (lives) => this.lives.set(lives),
+        onMultiplierChange: (active) => this.multiplierActive.set(active),
+        onGameOver: (result) => this.handleGameOver(result),
+        onLevelChange: (level) => this.handleLevelUp(level),
+        onContinueOffer: () => this.handleContinueOffer(),
+        onShoot: () => this.audioService.shoot(),
+        onBulletImpact: () => this.audioService.ballHit(),
+        onBallDestroyed: (tier) => this.audioService.ballDestroyed(tier),
+        onMultiplierActivated: () => this.audioService.multiplierActivated(),
+        onLifeLost: () => this.audioService.lifeLost(),
+      },
+      startLevel
+    );
 
     this.shopService.equippedCannonId$.subscribe((id) => {
       const item = this.shopService.getItem(id);
@@ -163,6 +171,7 @@ export class GamePage implements AfterViewInit, OnDestroy {
     this.audioService.gameOver();
 
     this.profileService.recordGameFinished(result.score);
+    this.profileService.recordLevelReached(result.levelReached);
 
     this.gameRewardService
       .completeSession({

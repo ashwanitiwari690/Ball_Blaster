@@ -111,7 +111,7 @@ export class BallBlasterEngine {
 
   private score = 0;
   private lives: number = ECONOMY_CONFIG.startingLives;
-  private level = 1;
+  private level: number;
   private ballsDestroyedInLevel = 0;
   private ballsDestroyed = 0;
   private destroyedByTier: Record<BallTier, number> = { normal: 0, fast: 0, heavy: 0, gold: 0, boss: 0 };
@@ -126,8 +126,10 @@ export class BallBlasterEngine {
 
   constructor(
     private readonly canvas: HTMLCanvasElement,
-    private readonly callbacks: EngineCallbacks
+    private readonly callbacks: EngineCallbacks,
+    startLevel = 1
   ) {
+    this.level = Math.max(1, Math.floor(startLevel) || 1);
     this.cannonY = () => this.height - 70;
     this.resize();
     this.seedStars();

@@ -10,7 +10,13 @@ export const environment = {
    * Tic Rush, ...) integrate with — see reward.config.ts. Assumes that
    * backend is running locally on its conventional port during development.
    */
-  apiBaseUrl: 'http://localhost:4227/api/game-rewards'
+  apiBaseUrl: 'http://localhost:4227/api/game-rewards',
+  // Same backend, its app-verification router — see app-verification.config.ts.
+  appVerificationApiUrl: 'http://localhost:4227/api/app-verification',
+  // TODO: paste the API key shown for this game's App Promotion campaign in
+  // the Earnivo agent panel. Leave blank to skip the install-verification
+  // call entirely.
+  appVerificationApiKey: ''
 };
 
 /*

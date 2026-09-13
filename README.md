@@ -41,18 +41,24 @@ section below — every new bit of ad-driven UI state uses a `signal()`).
 | Game → "OUT OF LIVES — Watch Ad to Continue" | Rewarded | One extra life per run, offered exactly once when lives hit 0 |
 | Shop / Cannon Details → tapping an item you can't afford | Rewarded | "Watch Ad for Coins" button inside the insufficient-funds toast — reuses the same capped Wallet ad, not a new uncapped channel |
 | Game Over → tapping Play Again / Home | Interstitial | Frequency-capped (`INTERSTITIAL_EVERY_N_ROUNDS`, currently every 2 runs) so it doesn't fire after every single game |
+| Home → "PLAY NOW" | Interstitial | Shown at the Home→Game breakpoint, every tap (not frequency-capped — this transition doesn't repeat rapidly the way the Game Over replay loop does, since "Play Again" from Game Over skips Home entirely) |
+| Every screen except live gameplay | Banner | Persistent, bottom-anchored (`AdmobService.showBanner()`/`hideBanner()`, toggled by `AppComponent` on route change); hidden on the Game page so it never overlaps the cannon's drag area, and hidden outright while offline |
 
 Deliberately **not** added: an ad gate on daily login claim, shop browsing, or
 between every navigation — the goal was real, opt-in engagement points, not
 an ad on every tap.
 
-**No banner ad.** An earlier pass added a persistent bottom banner across
-every screen; it was removed after reviewing the sibling Ionic game
-(`Brain-Rush-ionic-`) used as the reference for this AdMob setup, which
-deliberately excludes banners because a bottom banner risks covering the
-bottom nav bar / the cannon's drag area on smaller screens. If a banner is
-still wanted, `AdmobService` and `admob.config.ts` no longer carry any
-banner code path — it would need to be re-added, not un-hidden.
+**Banner ad, and how content avoids it.** `AppComponent`'s constructor runs an
+`effect()` that calls `admob.showBanner()`/`hideBanner()` whenever the current
+route or `ConnectivityService.online()` changes — shown everywhere except the
+Game page, hidden while offline (the banner is a native overlay, so the
+offline gate's router-outlet swap can't hide it on its own). The banner's
+*actual* rendered height comes back live via the plugin's `SizeChanged` event
+and is written to a `--ad-banner-space` CSS custom property
+(`AdmobService.setBannerSpace()`), which `.bb-bottom-nav`'s `bottom` offset
+and `.bb-bottom-nav-spacer`'s height both read — so the bottom nav and the
+scrollable content beneath it shift up to make room instead of getting
+covered, without either hardcoding a fixed banner height.
 
 **How rewarded coins/rewards are handled:**
 
@@ -81,16 +87,24 @@ browser. That path is unreachable in a real native build
 (`Capacitor.isNativePlatform()` gates it).
 
 **Where the test IDs are configured:** `src/app/core/config/admob.config.ts`
-(`AD_UNIT_IDS.interstitial` / `.rewarded`) — both are Google's official
-public test ad unit IDs. The native AdMob **App ID** is separate and lives in
-`android/app/src/main/res/values/strings.xml` (`admob_app_id`), currently set
-to Google's public **test** App ID (`ca-app-pub-3940256099942544~3347511713`),
-referenced from `AndroidManifest.xml`.
+(`AD_UNIT_IDS.banner` / `.interstitial` / `.rewarded`) — all three are
+Google's official public test ad unit IDs. The native AdMob **App ID** is
+separate and lives in `android/app/src/main/res/values/strings.xml`
+(`admob_app_id`), currently set to Google's public **test** App ID
+(`ca-app-pub-3940256099942544~3347511713`), referenced from
+`AndroidManifest.xml`.
+
+**`android/` isn't committed to git** (see `.gitignore`), so `cap add android`
+regenerates it from a blank template — wiping the hand-edited `admob_app_id`
+string and manifest meta-data above. `npm run android:add` (`cap add android
+&& node scripts/setup-admob-android.js`) re-applies both automatically after
+a fresh add; running `scripts/setup-admob-android.js` again on an
+already-configured `android/` is a safe no-op (it checks before writing).
 
 **Switching to production IDs:**
-1. In the AdMob console, add this app and create real ad units for
-   interstitial and rewarded.
-2. Replace the two values in `admob.config.ts` with those ad unit IDs.
+1. In the AdMob console, add this app and create real ad units for banner,
+   interstitial, and rewarded.
+2. Replace the three values in `admob.config.ts` with those ad unit IDs.
 3. Replace `admob_app_id` in `strings.xml` with the app's real App ID from
    the same console listing, and update `AndroidManifest.xml`'s reference
    only if you rename the string.
@@ -226,6 +240,17 @@ dependency-free Canvas 2D game loop:
   level pays a flat +10 coin bonus and nudges spawn rate/tier mix harder
   (`pickWeightedTier()` / the spawn-interval math in `updateSpawning()`).
   The current level and a "LEVEL N" banner are shown live during play.
+- **Level progress persists across runs.** `PlayerProfileService` tracks
+  `highestLevel` — the furthest level ever reached, across every run, on
+  this device — in `bb.profile.v1`. A brand-new game always starts at that
+  saved level (`GamePage.ngAfterViewInit()` reads it and passes it to the
+  engine's `startLevel` constructor param) instead of always resetting to
+  level 1, and it's raised (never lowered) via
+  `PlayerProfileService.recordLevelReached()` whenever a run ends — whether
+  by losing all lives or by Quit & Cash Out — at whatever level was reached,
+  even if no *new* level completed that run. Settings → "Reset Level" (Danger
+  Zone) is the only thing that puts it back to 1, and it does not touch the
+  coin balance.
 - The engine never touches the network or the wallet. It reports a plain
   result object (`EngineResult`) to `GamePage`, which hands it to
   `GameRewardService`.
@@ -343,6 +368,55 @@ Wiring a different backend later is the same one-method change described in
 "Architecture" above — everything else (idempotency, UI state machine,
 error handling) is backend-agnostic.
 
+## App Promotion verification (Earnivo)
+
+Ball Blaster can itself be the app an Earnivo user is paid to install and
+open — the "App Promotion" reward flow described in
+`APP_PROMOTION_VERIFICATION_INTEGRATION.md`. From this game's side, that flow
+requires exactly one thing: on every app launch, read this device's
+Advertising ID (GAID on Android) and hand it to Earnivo along with this
+campaign's API key, so Earnivo can match it against whichever Earnivo user
+started the task on this same phone and credit their reward. This mirrors
+the integration already shipped in the sibling Ionic game
+(`E:\Ionic Game\Brain-Rush-ionic-`), which uses the identical service.
+
+- **`AppVerificationService.confirmAppPromotion()`**
+  (`src/app/core/services/app-verification.service.ts`) is called once from
+  `AppComponent.ngOnInit()`, fire-and-forget, alongside `admob.initialize()`.
+  It reads the device's Advertising ID via
+  `@capacitor-community/advertising-id` and calls
+  `POST {apiVerificationBaseUrl}/confirm` with `{ apiKey, advertisingId }`.
+- **No-op by design** whenever there's nothing to do: on the web
+  (`Capacitor.isNativePlatform()` is false, since Advertising IDs only exist
+  on real devices), or whenever `appVerificationApiKey` is blank in the
+  environment file (see below) — so this is always safe to leave wired up
+  even before a campaign exists.
+- **`appVerificationApiKey`** (`src/environments/environment.ts` /
+  `environment.prod.ts`) is currently **left blank** — it must be filled in
+  with the API key Earnivo generates for this game's specific App Promotion
+  campaign (shown on that campaign's detail page in the agent panel) before
+  this feature does anything. Until then the call above never fires.
+- **`appVerificationApiUrl`** points at the same Central Game Reward API host
+  as `apiBaseUrl` above, just the `/api/app-verification` router instead of
+  `/api/game-rewards` — `http://localhost:4227/api/app-verification` in dev,
+  and the same placeholder production host that **you must confirm/replace**
+  before a real prod build.
+- **Response handling**: a `422` (nothing pending to verify for this device
+  yet) is the expected, normal response and is logged at `debug` level, not
+  treated as an error; a `403` (wrong/unknown API key) is logged as an error
+  since it means `appVerificationApiKey` is misconfigured; any other failure
+  is swallowed silently — this call must never surface an error to the
+  player or block anything else in the app.
+- **No UI for this at all.** Unlike redemption, there is nothing for the
+  player to tap, watch, or see — Ball Blaster is the *promoted* app in this
+  flow, not the app tracking a "waiting for verification" task. The whole
+  feature is this one background call on launch.
+- **iOS note**: not applicable yet — this project currently only ships an
+  Android build (no `ios/` platform added). If iOS is added later,
+  `AdvertisingId.requestTracking()` (already called for the iOS platform
+  branch in the service) will trigger Apple's tracking-permission prompt
+  before it can read a non-zero IDFA, same as the reference app.
+
 ## Important: this app runs zoneless — read before touching GamePage
 
 `angular.json`'s `polyfills` array is empty and `zone.js` isn't a
@@ -395,9 +469,9 @@ pattern. Fields set synchronously inside a template event handler
   estimate. See "Wallet & redemption — kept intentionally minimal" below for
   why, and what's still tracked internally vs. only ever shown.
 - Daily login rewards with streak tracking and idempotent one-claim-per-day.
-- Real AdMob integration (test ad unit IDs) — interstitial and 5
-  rewarded-ad placements (no banner — see "AdMob ads + offline gate" below
-  for the full breakdown and why).
+- Real AdMob integration (test ad unit IDs) — a persistent banner, interstitial,
+  and 5 rewarded-ad placements. See "AdMob ads + offline gate" below for the
+  full breakdown.
 - An offline gate that blocks the whole app behind a "no internet
   connection" screen, since ad revenue funds the coin economy.
 - Shop purchases (cannon skins, ball skins, effects, themes) that spend
@@ -408,6 +482,12 @@ pattern. Fields set synchronously inside a template event handler
   above for the contract, idempotency, and what still needs backend-side
   setup (registering `gameCode: 'BALL_BLASTER'`, confirming the prod
   `apiBaseUrl`).
+- App Promotion verification: on every launch, silently confirms this
+  device's Advertising ID to Earnivo so an App Promotion reward (if this game
+  is the one being promoted in an Earnivo campaign) gets credited
+  automatically — see "App Promotion verification (Earnivo)" above. Wired up
+  and building today; only needs `appVerificationApiKey` filled in once a
+  real campaign exists.
 - Sound & music (`core/services/audio.service.ts`): every gameplay event
   (shoot, hit, destroy, level-up, life lost, game over) and every UI action
   (purchase, claim, redeem, button tap) has a synthesized Web Audio SFX —
@@ -415,8 +495,15 @@ pattern. Fields set synchronously inside a template event handler
   background loop starts on first tap. Sound Effects and Music each have
   their own toggle in Settings; haptics has a toggle stored but not yet
   wired to a real haptics call.
-- A custom app icon (`src/assets/icon/favicon.png`, master source at
-  `resources/icon.png` for generating native Android/iOS icons later).
+- A custom app icon: `resources/icon.png` (1024×1024 master source) is
+  generated into every native Android density/format via `@capacitor/assets`
+  (`npx @capacitor/assets generate --android`) — adaptive icon, legacy
+  `ic_launcher`, round icon, and splash screens all under
+  `android/app/src/main/res/`. This is what shows on the home screen after
+  installing the app; `src/assets/icon/favicon.png` is the separate browser
+  tab favicon for the web build. Re-run the generate command after changing
+  `resources/icon.png`, then `npx cap sync android`, to refresh the native
+  icons.
 - A "reset local demo data" utility in Settings for QA.
 
 ## What's intentionally NOT here (needs the real backend)

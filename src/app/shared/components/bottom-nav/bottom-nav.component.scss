@@ -2,7 +2,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  bottom: 0;
+  bottom: var(--ad-banner-space, 0px);
   z-index: 20;
   display: flex;
   justify-content: space-around;
