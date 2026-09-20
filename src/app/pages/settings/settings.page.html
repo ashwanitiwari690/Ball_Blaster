@@ -26,6 +26,13 @@
     </div>
 
 
+    <div class="bb-section-title">About</div>
+    <div class="bb-card st-row">
+      <ion-icon name="information-circle-outline"></ion-icon>
+      <span class="st-row-label">App Version</span>
+      <span class="st-row-value">v{{ appVersion() }}</span>
+    </div>
+
     <div class="bb-section-title">Danger Zone</div>
     <ion-button expand="block" color="danger" fill="outline" class="st-reset-btn" (click)="confirmReset()">
       <ion-icon name="trash-outline" slot="start"></ion-icon>

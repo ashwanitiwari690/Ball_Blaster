@@ -1,6 +1,8 @@
-import { Component } from '@angular/core';
+import { Component, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { AlertController, ToastController } from '@ionic/angular';
+import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { SettingsService } from '../../core/services/settings.service';
 import { AudioService } from '../../core/services/audio.service';
 import { PlayerProfileService } from '../../core/services/player-profile.service';
@@ -11,8 +13,9 @@ import { PlayerProfileService } from '../../core/services/player-profile.service
   styleUrls: ['./settings.page.scss'],
   standalone: false,
 })
-export class SettingsPage {
+export class SettingsPage implements OnInit {
   readonly settings$ = this.settingsService.view$;
+  readonly appVersion = signal<string>('1.0.0');
 
   constructor(
     private readonly router: Router,
@@ -22,6 +25,20 @@ export class SettingsPage {
     private readonly alertCtrl: AlertController,
     private readonly toastCtrl: ToastController
   ) {}
+
+  async ngOnInit(): Promise<void> {
+    if (Capacitor.isNativePlatform()) {
+      try {
+        const info = await App.getInfo();
+        if (info.version) {
+          const cleanVersion = info.version.startsWith('v') ? info.version.slice(1) : info.version;
+          this.appVersion.set(info.build ? `${cleanVersion} (${info.build})` : cleanVersion);
+        }
+      } catch (err) {
+        console.warn('Could not retrieve app version:', err);
+      }
+    }
+  }
 
   goBack(): void {
     this.router.navigateByUrl('/home');
