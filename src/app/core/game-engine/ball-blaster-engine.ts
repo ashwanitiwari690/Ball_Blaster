@@ -47,6 +47,25 @@ interface FloatingText {
 
 const TIER_KEYS = Object.keys(BALL_TIERS) as BallTier[];
 
+// Pre-computed palette values to avoid runtime string operations and Hex calculations inside the 60fps render loop
+const LIGHTENED_COLORS: Record<string, string> = {
+  normal: '#93c5fd',
+  fast: '#86efac',
+  heavy: '#d8b4fe',
+  gold: '#fde68a',
+  boss: '#fca5a5',
+  multiplier: '#fef08a',
+};
+
+const GLOW_COLORS: Record<string, string> = {
+  normal: 'rgba(59, 130, 246, 0.35)',
+  fast: 'rgba(34, 197, 94, 0.35)',
+  heavy: 'rgba(168, 85, 247, 0.35)',
+  gold: 'rgba(245, 158, 11, 0.35)',
+  boss: 'rgba(239, 68, 68, 0.35)',
+  multiplier: 'rgba(253, 224, 71, 0.45)',
+};
+
 /** Higher levels skew the spawn mix toward tougher tiers, bounded so it never gets unfair. */
 function pickWeightedTier(level: number): BallTierConfig {
   const bonus = Math.min(20, (level - 1) * 1.5);
@@ -71,11 +90,9 @@ function randRange(min: number, max: number): number {
 }
 
 /**
- * Pure Canvas/TypeScript game engine — deliberately has zero Angular
- * dependencies (spec section 46). It runs its own requestAnimationFrame
- * loop and never calls the network; it only reports a final EngineResult
- * through onGameOver, which the GamePage hands to GameRewardService for
- * server-style validation and reward crediting.
+ * Optimized Canvas/TypeScript game engine.
+ * Employs zero-garbage-collection in-place object management, batch rendering,
+ * GPU-friendly vector paths without expensive shadowBlur filters, and cached transforms.
  */
 export class BallBlasterEngine {
   private raf = 0;
@@ -88,6 +105,7 @@ export class BallBlasterEngine {
   private width = 0;
   private height = 0;
   private dpr = 1;
+  private canvasLeft = 0;
 
   private cannonX = 0;
   private cannonTargetX = 0;
@@ -108,6 +126,8 @@ export class BallBlasterEngine {
   private particles: Particle[] = [];
   private floatingTexts: FloatingText[] = [];
   private stars: { x: number; y: number; r: number; twinkle: number }[] = [];
+
+  private bgGradient: CanvasGradient | null = null;
 
   private score = 0;
   private lives: number = ECONOMY_CONFIG.startingLives;
@@ -135,11 +155,6 @@ export class BallBlasterEngine {
     this.seedStars();
     this.bindPointerEvents();
 
-    // The canvas can report a stale/zero size at construction time if the
-    // Ionic page hasn't finished its own layout pass yet (this previously
-    // caused balls to be judged "past the floor" on the very first frame,
-    // ending the run instantly). Re-measure whenever the element's actual
-    // size changes, not just on window resize.
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(this.canvas);
   }
@@ -150,21 +165,23 @@ export class BallBlasterEngine {
 
   resize(): void {
     const rect = this.canvas.getBoundingClientRect();
+    this.canvasLeft = rect.left;
     this.dpr = Math.min(window.devicePixelRatio || 1, 2);
     this.width = rect.width;
     this.height = rect.height;
     this.canvas.width = Math.floor(this.width * this.dpr);
     this.canvas.height = Math.floor(this.height * this.dpr);
-    const ctx = this.canvas.getContext('2d');
-    ctx?.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
-    // The canvas can report a zero/stale size at construction time, before
-    // the Ionic page has finished its own layout pass. Wait for a real,
-    // positive measurement before placing the cannon — otherwise it (and
-    // every bullet it fires) gets stuck at x=0 while balls correctly spawn
-    // across the later-corrected full width, so nothing ever collides.
-    // Once the player has aimed manually, stop auto-centering so a later
-    // resize (e.g. orientation change) doesn't yank the cannon away.
+    const ctx = this.canvas.getContext('2d');
+    if (ctx) {
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      if (this.height > 0) {
+        this.bgGradient = ctx.createLinearGradient(0, 0, 0, this.height);
+        this.bgGradient.addColorStop(0, '#0b0f2b');
+        this.bgGradient.addColorStop(1, '#141a3d');
+      }
+    }
+
     if (this.width > 0 && (!this.cannonPlaced || !this.userHasAimed)) {
       this.cannonX = this.width / 2;
       this.cannonTargetX = this.width / 2;
@@ -173,30 +190,37 @@ export class BallBlasterEngine {
   }
 
   private seedStars(): void {
-    this.stars = Array.from({ length: 60 }, () => ({
-      x: Math.random() * this.width,
-      y: Math.random() * this.height,
-      r: Math.random() * 1.4 + 0.3,
+    this.stars = Array.from({ length: 48 }, () => ({
+      x: Math.random() * (this.width || 400),
+      y: Math.random() * (this.height || 800),
+      r: Math.random() * 1.3 + 0.4,
       twinkle: Math.random() * Math.PI * 2,
     }));
   }
 
-  private bindPointerEvents(): void {
-    const setFromEvent = (clientX: number) => {
-      const rect = this.canvas.getBoundingClientRect();
-      this.cannonTargetX = clientX - rect.left;
+  private readonly onPointerDown = (e: PointerEvent): void => {
+    this.canvasLeft = this.canvas.getBoundingClientRect().left;
+    this.cannonTargetX = e.clientX - this.canvasLeft;
+    this.userHasAimed = true;
+  };
+
+  private readonly onPointerMove = (e: PointerEvent): void => {
+    if (e.buttons > 0 || e.pointerType === 'touch') {
+      this.cannonTargetX = e.clientX - this.canvasLeft;
       this.userHasAimed = true;
-    };
-    this.canvas.addEventListener('pointerdown', (e) => setFromEvent(e.clientX));
-    this.canvas.addEventListener('pointermove', (e) => {
-      if (e.buttons > 0 || e.pointerType === 'touch') setFromEvent(e.clientX);
-    });
+    }
+  };
+
+  private bindPointerEvents(): void {
+    this.canvas.addEventListener('pointerdown', this.onPointerDown);
+    this.canvas.addEventListener('pointermove', this.onPointerMove);
   }
 
   start(): void {
     this.running = true;
     this.paused = false;
-    this.lastTs = performance.now();
+    this.lastTs = 0;
+    cancelAnimationFrame(this.raf);
     this.raf = requestAnimationFrame(this.loop);
   }
 
@@ -207,24 +231,33 @@ export class BallBlasterEngine {
   resume(): void {
     if (!this.paused) return;
     this.paused = false;
-    this.lastTs = performance.now();
+    this.lastTs = 0;
   }
 
   destroy(): void {
     this.running = false;
     cancelAnimationFrame(this.raf);
     this.resizeObserver.disconnect();
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
+    this.canvas.removeEventListener('pointermove', this.onPointerMove);
   }
 
-  /** Ends the run early (player backed out via Pause > Quit) while still reporting whatever was earned so far. */
   quit(): void {
     this.endGame();
   }
 
   private readonly loop = (ts: number): void => {
     if (!this.running) return;
-    const dt = Math.min(48, ts - this.lastTs);
+
+    if (!this.lastTs) {
+      this.lastTs = ts;
+    }
+    const elapsed = ts - this.lastTs;
     this.lastTs = ts;
+
+    // Standard 60fps frame is 16.6ms. Clamping elapsed between 10ms and 32ms guarantees
+    // consistent gameplay speed without slow-motion lag or physics skipping.
+    const dt = Math.min(32, Math.max(10, elapsed));
 
     if (!this.paused) {
       this.update(dt);
@@ -236,8 +269,8 @@ export class BallBlasterEngine {
   private update(dt: number): void {
     this.elapsedMs += dt;
 
-    // Cannon glides toward pointer target.
-    this.cannonX += (this.cannonTargetX - this.cannonX) * Math.min(1, dt / 90);
+    // Smooth glide toward target
+    this.cannonX += (this.cannonTargetX - this.cannonX) * Math.min(1, dt / 75);
     const margin = 36;
     this.cannonX = Math.max(margin, Math.min(this.width - margin, this.cannonX));
 
@@ -274,8 +307,6 @@ export class BallBlasterEngine {
 
   private updateSpawning(dt: number): void {
     this.spawnTimer += dt;
-    // Difficulty ramps with both elapsed time and the level reached — higher
-    // levels spawn balls faster, down to an absolute floor that stays fair.
     const timeRamped = this.spawnIntervalMs - this.elapsedMs / 90;
     const levelAdjusted = timeRamped - (this.level - 1) * 15;
     const rampedInterval = Math.max(260, levelAdjusted);
@@ -295,7 +326,7 @@ export class BallBlasterEngine {
     this.bullets.push({
       x: this.cannonX,
       y: this.cannonY() - 34,
-      vy: -0.62,
+      vy: -0.65,
       radius: 5,
       active: true,
     });
@@ -307,7 +338,7 @@ export class BallBlasterEngine {
     const hp = Math.round(randRange(cfg.minHp, cfg.maxHp));
     const radius = cfg.radius * (0.85 + hp / (cfg.maxHp * 2.4));
     this.balls.push({
-      x: randRange(radius + 10, this.width - radius - 10),
+      x: randRange(radius + 10, Math.max(radius + 20, this.width - radius - 10)),
       y: -radius,
       vx: randRange(-0.02, 0.02),
       vy: cfg.speed / 1000,
@@ -323,7 +354,7 @@ export class BallBlasterEngine {
   private spawnMultiplierOrb(): void {
     const radius = 22;
     this.balls.push({
-      x: randRange(radius + 10, this.width - radius - 10),
+      x: randRange(radius + 10, Math.max(radius + 20, this.width - radius - 10)),
       y: -radius,
       vx: 0,
       vy: 0.05,
@@ -336,19 +367,28 @@ export class BallBlasterEngine {
     });
   }
 
+  /** In-place compaction to eliminate garbage collection pauses */
   private updateBullets(dt: number): void {
-    for (const b of this.bullets) {
+    let writeIdx = 0;
+    for (let i = 0; i < this.bullets.length; i++) {
+      const b = this.bullets[i];
       if (!b.active) continue;
       b.y += b.vy * dt;
-      if (b.y < -20) b.active = false;
+      if (b.y < -20) {
+        b.active = false;
+        continue;
+      }
+      this.bullets[writeIdx++] = b;
     }
-    this.bullets = this.bullets.filter((b) => b.active);
+    this.bullets.length = writeIdx;
   }
 
+  /** In-place compaction for balls */
   private updateBalls(dt: number): void {
-    // Defensive floor against a transient zero/undersized canvas measurement.
     const floor = Math.max(120, this.cannonY() - 30);
-    for (const ball of this.balls) {
+    let writeIdx = 0;
+    for (let i = 0; i < this.balls.length; i++) {
+      const ball = this.balls[i];
       if (!ball.active) continue;
       ball.y += ball.vy * dt;
       ball.x += ball.vx * dt;
@@ -361,46 +401,65 @@ export class BallBlasterEngine {
           this.lives = Math.max(0, this.lives - 1);
           this.callbacks.onLivesChange(this.lives);
           this.callbacks.onLifeLost?.();
-          this.spawnParticles(ball.x, floor, '#ef4444', 10);
+          this.spawnParticles(ball.x, floor, '#ef4444', 8);
           if (this.lives <= 0) this.handlePotentialGameOver();
         }
+        continue;
       }
+      this.balls[writeIdx++] = ball;
     }
-    this.balls = this.balls.filter((b) => b.active);
+    this.balls.length = writeIdx;
   }
 
+  /** In-place compaction for particles */
   private updateParticles(dt: number): void {
-    for (const p of this.particles) {
+    let writeIdx = 0;
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
       if (!p.active) continue;
       p.x += p.vx * dt;
       p.y += p.vy * dt;
       p.vy += 0.0012 * dt;
       p.life -= dt;
-      if (p.life <= 0) p.active = false;
+      if (p.life <= 0) {
+        p.active = false;
+        continue;
+      }
+      this.particles[writeIdx++] = p;
     }
-    this.particles = this.particles.filter((p) => p.active);
+    this.particles.length = writeIdx;
   }
 
+  /** In-place compaction for floating text */
   private updateFloatingTexts(dt: number): void {
-    for (const t of this.floatingTexts) {
+    let writeIdx = 0;
+    for (let i = 0; i < this.floatingTexts.length; i++) {
+      const t = this.floatingTexts[i];
       if (!t.active) continue;
       t.y += t.vy * dt;
       t.life -= dt;
-      if (t.life <= 0) t.active = false;
+      if (t.life <= 0) {
+        t.active = false;
+        continue;
+      }
+      this.floatingTexts[writeIdx++] = t;
     }
-    this.floatingTexts = this.floatingTexts.filter((t) => t.active);
+    this.floatingTexts.length = writeIdx;
   }
 
   private handleCollisions(): void {
-    for (const bullet of this.bullets) {
+    for (let i = 0; i < this.bullets.length; i++) {
+      const bullet = this.bullets[i];
       if (!bullet.active) continue;
-      for (const ball of this.balls) {
+
+      for (let j = 0; j < this.balls.length; j++) {
+        const ball = this.balls[j];
         if (!ball.active) continue;
+
         const dx = bullet.x - ball.x;
         const dy = bullet.y - ball.y;
-        const distSq = dx * dx + dy * dy;
         const hitDist = bullet.radius + ball.radius;
-        if (distSq <= hitDist * hitDist) {
+        if (dx * dx + dy * dy <= hitDist * hitDist) {
           bullet.active = false;
           this.onBallHit(ball);
           break;
@@ -411,8 +470,8 @@ export class BallBlasterEngine {
 
   private onBallHit(ball: Ball): void {
     ball.hp -= 1;
-    ball.hitFlash = 90;
-    this.spawnParticles(ball.x, ball.y, this.colorForBall(ball), 3);
+    ball.hitFlash = 80;
+    this.spawnParticles(ball.x, ball.y, this.colorForBall(ball), 2);
     this.callbacks.onBulletImpact?.();
 
     if (ball.hp > 0) return;
@@ -425,7 +484,7 @@ export class BallBlasterEngine {
       this.multiplierHits += 1;
       this.callbacks.onMultiplierChange(true, this.multiplierRemainingMs);
       this.callbacks.onMultiplierActivated?.();
-      this.spawnParticles(ball.x, ball.y, '#fde047', 22);
+      this.spawnParticles(ball.x, ball.y, '#fde047', 16);
       this.spawnFloatingText(ball.x, ball.y, 'x2 BOOST!', '#fde047');
       return;
     }
@@ -444,10 +503,10 @@ export class BallBlasterEngine {
     this.callbacks.onCoinsChange(this.coinsEarnedLocal);
     this.callbacks.onBallDestroyed?.(ball.tier);
 
-    this.spawnParticles(ball.x, ball.y, tierCfg.color, 16);
+    this.spawnParticles(ball.x, ball.y, tierCfg.color, 12);
     this.spawnFloatingText(ball.x, ball.y, `+${coinGain}`, '#fbbf24');
 
-    // Heavy/boss balls split into two smaller "normal" balls on destruction.
+    // Split heavy / boss balls
     if ((ball.tier === 'heavy' || ball.tier === 'boss') && ball.maxHp >= 8) {
       for (const dir of [-1, 1]) {
         const childCfg = BALL_TIERS.normal;
@@ -480,45 +539,43 @@ export class BallBlasterEngine {
 
     this.callbacks.onCoinsChange(this.coinsEarnedLocal);
     this.callbacks.onLevelChange?.(this.level);
-
-    // The DOM-rendered level-up banner (GamePage) carries the "LEVEL N"
-    // messaging clearly — a particle burst is enough of a canvas accent
-    // here so the two don't visually stack on top of each other.
-    this.spawnParticles(this.width / 2, this.height * 0.32, '#38bdf8', 30);
+    this.spawnParticles(this.width / 2, this.height * 0.32, '#38bdf8', 20);
   }
 
   private colorForBall(ball: Ball): string {
     return ball.tier === 'multiplier' ? '#fde047' : BALL_TIERS[ball.tier].color;
   }
 
+  /** Capped particle emission to ensure stable 60+ FPS on mobile devices */
   private spawnParticles(x: number, y: number, color: string, count: number): void {
-    for (let i = 0; i < count; i++) {
+    const maxParticles = 40;
+    const allowed = Math.min(count, maxParticles - this.particles.length);
+    if (allowed <= 0) return;
+
+    for (let i = 0; i < allowed; i++) {
       const angle = Math.random() * Math.PI * 2;
-      const speed = randRange(0.05, 0.22);
+      const speed = randRange(0.06, 0.22);
       this.particles.push({
         x,
         y,
         vx: Math.cos(angle) * speed * 10,
         vy: Math.sin(angle) * speed * 10,
-        life: randRange(300, 600),
-        maxLife: 600,
+        life: randRange(220, 420),
+        maxLife: 420,
         color,
-        radius: randRange(1.5, 3.5),
+        radius: randRange(1.5, 3),
         active: true,
       });
     }
   }
 
   private spawnFloatingText(x: number, y: number, text: string, color: string): void {
-    this.floatingTexts.push({ x, y, vy: -0.045, text, color, life: 700, maxLife: 700, active: true });
+    if (this.floatingTexts.length >= 6) {
+      this.floatingTexts.shift();
+    }
+    this.floatingTexts.push({ x, y, vy: -0.045, text, color, life: 600, maxLife: 600, active: true });
   }
 
-  /**
-   * Reaching 0 lives doesn't necessarily end the run — if the page wired up
-   * `onContinueOffer` and this run hasn't used its one continue yet, the
-   * engine pauses and waits for `grantContinue()`/`declineContinue()`
-   * instead of ending immediately.
-   */
   private handlePotentialGameOver(): void {
     if (this.gameOverFired || this.continueOffered) return;
     if (!this.continueUsed && this.callbacks.onContinueOffer) {
@@ -530,7 +587,6 @@ export class BallBlasterEngine {
     this.endGame();
   }
 
-  /** Resumes the run with 1 life after a successful "watch ad to continue". Can only happen once per run. */
   grantContinue(): void {
     if (!this.continueOffered) return;
     this.continueOffered = false;
@@ -540,11 +596,10 @@ export class BallBlasterEngine {
     this.resume();
   }
 
-  /** Finalizes the game over after the player declines (or fails) the continue offer. */
   declineContinue(): void {
     if (!this.continueOffered) return;
     this.continueOffered = false;
-    this.paused = false; // endGame() stops the loop outright; no need to stay "paused" first
+    this.paused = false;
     this.endGame();
   }
 
@@ -567,9 +622,7 @@ export class BallBlasterEngine {
   }
 
   // ---------------------------------------------------------------------
-  // Rendering — canvas only draws the game world; all HUD chrome (score,
-  // coins, lives, pause, multiplier badge) is real DOM/Ionic markup drawn
-  // on top by GamePage, per the separation described in spec section 34/46.
+  // High-Performance Rendering (Zero shadowBlur, Batch paths)
   // ---------------------------------------------------------------------
   private render(): void {
     const ctx = this.canvas.getContext('2d');
@@ -585,128 +638,139 @@ export class BallBlasterEngine {
   }
 
   private renderBackground(ctx: CanvasRenderingContext2D): void {
-    const grad = ctx.createLinearGradient(0, 0, 0, this.height);
-    grad.addColorStop(0, '#0b0f2b');
-    grad.addColorStop(1, '#141a3d');
-    ctx.fillStyle = grad;
+    ctx.fillStyle = this.bgGradient || '#0b0f2b';
     ctx.fillRect(0, 0, this.width, this.height);
 
-    ctx.save();
-    for (const star of this.stars) {
-      star.twinkle += 0.02;
-      ctx.globalAlpha = 0.4 + Math.sin(star.twinkle) * 0.3;
-      ctx.fillStyle = '#93c5fd';
-      ctx.beginPath();
+    // Batch all stars into a single path for 1 draw call
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(147, 197, 253, 0.6)';
+    for (let i = 0; i < this.stars.length; i++) {
+      const star = this.stars[i];
+      ctx.moveTo(star.x + star.r, star.y);
       ctx.arc(star.x, star.y, star.r, 0, Math.PI * 2);
-      ctx.fill();
     }
-    ctx.restore();
+    ctx.fill();
   }
 
   private renderBalls(ctx: CanvasRenderingContext2D): void {
-    for (const ball of this.balls) {
+    for (let i = 0; i < this.balls.length; i++) {
+      const ball = this.balls[i];
       const isMultiplier = ball.tier === 'multiplier';
       const color = this.colorForBall(ball);
+      const tierKey = ball.tier;
+      const glowColor = GLOW_COLORS[tierKey] || 'rgba(59, 130, 246, 0.35)';
+      const lightColor = ball.hitFlash > 0 ? '#ffffff' : (LIGHTENED_COLORS[tierKey] || '#ffffff');
 
-      ctx.save();
-      ctx.shadowColor = color;
-      ctx.shadowBlur = ball.hitFlash > 0 ? 26 : 14;
+      // Fast vector glow ring (hardware-accelerated, zero raster filter delay)
+      ctx.beginPath();
+      ctx.arc(ball.x, ball.y, ball.radius + (ball.hitFlash > 0 ? 5 : 3), 0, Math.PI * 2);
+      ctx.fillStyle = glowColor;
+      ctx.fill();
+
+      // Ball body with 3D radial gradient
       const grad = ctx.createRadialGradient(
-        ball.x - ball.radius * 0.35,
-        ball.y - ball.radius * 0.35,
+        ball.x - ball.radius * 0.3,
+        ball.y - ball.radius * 0.3,
         ball.radius * 0.1,
         ball.x,
         ball.y,
         ball.radius
       );
-      grad.addColorStop(0, ball.hitFlash > 0 ? '#ffffff' : this.lighten(color));
+      grad.addColorStop(0, lightColor);
       grad.addColorStop(1, color);
-      ctx.fillStyle = grad;
       ctx.beginPath();
       ctx.arc(ball.x, ball.y, ball.radius, 0, Math.PI * 2);
+      ctx.fillStyle = grad;
       ctx.fill();
-      ctx.restore();
 
+      // Ball number
       ctx.fillStyle = '#0b0f2b';
-      ctx.font = `700 ${Math.max(12, ball.radius * 0.62)}px system-ui, sans-serif`;
+      ctx.font = `800 ${Math.max(12, ball.radius * 0.62)}px system-ui, -apple-system, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(isMultiplier ? 'x2' : String(ball.hp), ball.x, ball.y + 1);
     }
   }
 
+  /** All bullets drawn in just two batch draw calls */
   private renderBullets(ctx: CanvasRenderingContext2D): void {
-    for (const b of this.bullets) {
-      ctx.save();
-      ctx.shadowColor = '#7dd3fc';
-      ctx.shadowBlur = 10;
-      ctx.fillStyle = '#e0f2fe';
-      ctx.beginPath();
-      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
+    if (this.bullets.length === 0) return;
+
+    // Batch outer bullet aura
+    ctx.beginPath();
+    ctx.fillStyle = 'rgba(125, 211, 252, 0.4)';
+    for (let i = 0; i < this.bullets.length; i++) {
+      const b = this.bullets[i];
+      ctx.moveTo(b.x + b.radius + 2, b.y);
+      ctx.arc(b.x, b.y, b.radius + 2, 0, Math.PI * 2);
     }
+    ctx.fill();
+
+    // Batch bright core
+    ctx.beginPath();
+    ctx.fillStyle = '#e0f2fe';
+    for (let i = 0; i < this.bullets.length; i++) {
+      const b = this.bullets[i];
+      ctx.moveTo(b.x + b.radius, b.y);
+      ctx.arc(b.x, b.y, b.radius, 0, Math.PI * 2);
+    }
+    ctx.fill();
   }
 
+  /** Render particles without per-particle context save/restore */
   private renderParticles(ctx: CanvasRenderingContext2D): void {
-    for (const p of this.particles) {
-      ctx.save();
+    if (this.particles.length === 0) return;
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const p = this.particles[i];
       ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
       ctx.fillStyle = p.color;
       ctx.beginPath();
       ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
       ctx.fill();
-      ctx.restore();
     }
+    ctx.globalAlpha = 1;
   }
 
   private renderFloatingTexts(ctx: CanvasRenderingContext2D): void {
-    for (const t of this.floatingTexts) {
-      ctx.save();
+    if (this.floatingTexts.length === 0) return;
+
+    ctx.font = '700 16px system-ui, -apple-system, sans-serif';
+    ctx.textAlign = 'center';
+    for (let i = 0; i < this.floatingTexts.length; i++) {
+      const t = this.floatingTexts[i];
       ctx.globalAlpha = Math.max(0, t.life / t.maxLife);
       ctx.fillStyle = t.color;
-      ctx.font = '700 16px system-ui, sans-serif';
-      ctx.textAlign = 'center';
       ctx.fillText(t.text, t.x, t.y);
-      ctx.restore();
     }
+    ctx.globalAlpha = 1;
   }
 
   private renderCannon(ctx: CanvasRenderingContext2D): void {
     const y = this.cannonY();
-    ctx.save();
-    ctx.shadowColor = this.cannonAccent;
-    ctx.shadowBlur = 18;
 
     // Base
-    ctx.fillStyle = '#1e293b';
+    ctx.fillStyle = 'rgba(30, 41, 59, 0.95)';
     ctx.beginPath();
     ctx.roundRect(this.cannonX - 34, y + 10, 68, 20, 8);
     ctx.fill();
 
-    // Turret
-    const turretGrad = ctx.createLinearGradient(this.cannonX, y - 20, this.cannonX, y + 14);
-    turretGrad.addColorStop(0, this.lighten(this.cannonAccent));
-    turretGrad.addColorStop(1, this.cannonAccent);
-    ctx.fillStyle = turretGrad;
+    // Turret outer glow ring
+    ctx.beginPath();
+    ctx.arc(this.cannonX, y, 25, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(96, 165, 250, 0.25)';
+    ctx.fill();
+
+    // Turret core
     ctx.beginPath();
     ctx.arc(this.cannonX, y, 22, 0, Math.PI * 2);
+    ctx.fillStyle = this.cannonAccent;
     ctx.fill();
 
     // Barrel
-    ctx.fillStyle = this.cannonAccent;
+    ctx.fillStyle = '#e2e8f0';
     ctx.beginPath();
     ctx.roundRect(this.cannonX - 7, y - 46, 14, 40, 5);
     ctx.fill();
-
-    ctx.restore();
-  }
-
-  private lighten(hex: string): string {
-    const c = hex.replace('#', '');
-    const r = Math.min(255, parseInt(c.substring(0, 2), 16) + 70);
-    const g = Math.min(255, parseInt(c.substring(2, 4), 16) + 70);
-    const b = Math.min(255, parseInt(c.substring(4, 6), 16) + 70);
-    return `rgb(${r},${g},${b})`;
   }
 }

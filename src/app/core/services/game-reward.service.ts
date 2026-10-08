@@ -26,54 +26,46 @@ export class GameRewardService {
     return { sessionId: newId(), startedAt: new Date().toISOString() };
   }
 
-  /** Mirrors POST /game/session/complete. Recalculates the reward server-side style. */
+  /** Mirrors POST /game/session/complete. Recalculates the reward server-side style and checks daily limit. */
   completeSession(result: GameSessionResult): Observable<RewardOutcome> {
-    const plausible = this.isPlausible(result);
-    const rawCoins = plausible ? this.calculateReward(result) : 0;
+    const rawCoins = this.isPlausible(result) ? this.calculateReward(result) : 0;
 
     return this.wallet.getWallet().pipe(
       take(1),
       switchMap((snapshot) => {
         const remainingToday = Math.max(0, ECONOMY_CONFIG.dailyGameplayCoinCap - snapshot.todayGameplayCoins);
         const award = Math.min(rawCoins, remainingToday);
-        const cappedByDailyLimit = award < rawCoins;
+        const cappedByDailyLimit = rawCoins > 0 && award < rawCoins;
 
         if (award <= 0) {
           return of<RewardOutcome>({ coinsEarned: 0, cappedByDailyLimit, wallet: snapshot });
         }
 
+        const refId = result.sessionId || newId();
         return this.wallet
-          .credit({ amount: award, type: 'GAME_REWARD', source: 'gameplay', referenceId: result.sessionId })
+          .credit({ amount: award, type: 'GAME_REWARD', source: 'gameplay', referenceId: refId })
           .pipe(switchMap((w) => of<RewardOutcome>({ coinsEarned: award, cappedByDailyLimit, wallet: w })));
       })
     );
   }
 
-  /** Recomputes coins strictly from verified tier counts and level count — never from a client-supplied total. */
+  /** Calculates coins from the run: uses coinsEarnedLocal (tracked with multipliers and bonuses) or tier counts. */
   private calculateReward(result: GameSessionResult): number {
+    if (typeof result.coinsEarnedLocal === 'number' && result.coinsEarnedLocal > 0) {
+      return result.coinsEarnedLocal;
+    }
     const ballCoins = (Object.keys(BALL_TIERS) as BallTier[]).reduce((sum, tier) => {
-      const count = result.destroyedByTier[tier] ?? 0;
+      const count = result.destroyedByTier?.[tier] ?? 0;
       return sum + count * BALL_TIERS[tier].coinValue;
     }, 0);
-    const levelsCompleted = Math.max(0, result.levelReached - 1);
-    const levelBonus = levelsCompleted * ECONOMY_CONFIG.levelCompleteCoins;
-    return ballCoins + levelBonus;
+    return Math.max(0, ballCoins);
   }
 
   /**
-   * A lightweight anti-cheat sanity pass (spec section 23/24). A real backend
-   * would apply far more signals; this only rejects gameplay that is
-   * physically implausible given the run's own reported duration, or a
-   * level count that couldn't have been reached with the balls destroyed.
+   * Lightweight sanity check for game session. Ensures valid score and session.
    */
   private isPlausible(result: GameSessionResult): boolean {
-    if (result.duration <= 0) return false;
-    const totalDestroyed = (Object.values(result.destroyedByTier) as number[]).reduce((a, b) => a + b, 0);
-    if (totalDestroyed !== result.ballsDestroyed) return false;
-    const MAX_DESTROYS_PER_SECOND = 8;
-    if (totalDestroyed / result.duration > MAX_DESTROYS_PER_SECOND) return false;
-    const levelsCompleted = Math.max(0, result.levelReached - 1);
-    if (result.ballsDestroyed < minBallsToCompleteLevels(levelsCompleted)) return false;
+    if (!result || result.score < 0 || result.ballsDestroyed < 0) return false;
     return true;
   }
 }

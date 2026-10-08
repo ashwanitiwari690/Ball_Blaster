@@ -1,6 +1,8 @@
 <ion-content [fullscreen]="true" class="game-content">
   <div class="game-stage">
-    <canvas #gameCanvas class="game-canvas"></canvas>
+    <canvas #gameCanvas class="game-canvas"
+      [style.pointer-events]="(paused() || showContinuePrompt()) ? 'none' : 'auto'">
+    </canvas>
 
     <div class="game-hud-top">
       <span class="bb-pill game-coin-pill">
@@ -13,7 +15,7 @@
         <div class="game-score-value">{{ score() | number }}</div>
       </div>
 
-      <button class="game-pause-btn" (click)="togglePause()" type="button">
+      <button class="game-pause-btn" (click)="togglePause()" type="button" aria-label="Pause game">
         <ion-icon [name]="paused() ? 'play' : 'pause'"></ion-icon>
       </button>
     </div>
@@ -36,8 +38,8 @@
     <div class="game-pause-overlay" *ngIf="paused()">
       <div class="game-pause-card">
         <h2>PAUSED</h2>
-        <ion-button expand="block" class="bb-btn-primary" (click)="togglePause()">Resume</ion-button>
-        <ion-button expand="block" fill="outline" class="bb-btn-outline" (click)="quitGame()">Quit &amp; Cash Out</ion-button>
+        <button type="button" class="bb-action-btn pause-resume-btn" (click)="togglePause()">RESUME</button>
+        <button type="button" class="bb-action-btn pause-quit-btn" (click)="quitGame()">QUIT &amp; CASH OUT</button>
       </div>
     </div>
 
@@ -45,27 +47,26 @@
       <div class="game-pause-card">
         <h2>OUT OF LIVES</h2>
         <p class="game-continue-sub">Watch a short ad to continue with 1 life ({{ continueSecondsLeft() }}s)</p>
-        <ion-button
-          expand="block"
-          class="bb-btn-primary"
+        <button
+          type="button"
+          class="bb-action-btn pause-resume-btn"
           [disabled]="continueAdLoading()"
           (click)="watchAdToContinue()"
         >
           <ion-spinner name="dots" *ngIf="continueAdLoading()"></ion-spinner>
           <ng-container *ngIf="!continueAdLoading()">
-            <ion-icon name="play-circle" slot="start"></ion-icon>
+            <ion-icon name="play-circle" style="margin-right: 6px; font-size: 20px;"></ion-icon>
             Watch Ad to Continue
           </ng-container>
-        </ion-button>
-        <ion-button
-          expand="block"
-          fill="outline"
-          class="bb-btn-outline"
+        </button>
+        <button
+          type="button"
+          class="bb-action-btn pause-quit-btn"
           [disabled]="continueAdLoading()"
           (click)="declineContinue()"
         >
           No Thanks
-        </ion-button>
+        </button>
       </div>
     </div>
   </div>

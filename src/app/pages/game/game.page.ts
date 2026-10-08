@@ -1,5 +1,7 @@
 import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, ViewChild, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { ViewDidEnter, ViewWillLeave } from '@ionic/angular';
+import { Subscription } from 'rxjs';
 import { BallBlasterEngine } from '../../core/game-engine/ball-blaster-engine';
 import { GameRewardService } from '../../core/services/game-reward.service';
 import { ShopService } from '../../core/services/shop.service';
@@ -18,13 +20,15 @@ const CONTINUE_COUNTDOWN_SECONDS = 6;
   styleUrls: ['./game.page.scss'],
   standalone: false,
 })
-export class GamePage implements AfterViewInit, OnDestroy {
+export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnDestroy {
   @ViewChild('gameCanvas', { static: true }) canvasRef!: ElementRef<HTMLCanvasElement>;
 
   private engine?: BallBlasterEngine;
   private sessionId = '';
   private levelUpTimer?: ReturnType<typeof setTimeout>;
   private continueCountdownTimer?: ReturnType<typeof setTimeout>;
+  private viewInitialized = false;
+  private shopSub?: Subscription;
 
   /**
    * This app runs zoneless (no zone.js — see angular.json's empty
@@ -60,11 +64,50 @@ export class GamePage implements AfterViewInit, OnDestroy {
   ) {}
 
   ngAfterViewInit(): void {
-    const canvas = this.canvasRef.nativeElement;
-    // Resume at the highest level ever reached (persisted in PlayerProfileService),
-    // not always level 1 — see "Reset Level" in Settings to start over from scratch.
-    const startLevel = this.profileService.current.highestLevel;
+    this.viewInitialized = true;
+    this.shopSub = this.shopService.equippedCannonId$.subscribe((id) => {
+      const item = this.shopService.getItem(id);
+      if (item && this.engine) this.engine.setCannonAccent(item.accent);
+    });
+  }
+
+  /**
+   * In Ionic, page components are cached by ion-router-outlet. When a player
+   * finishes a game and taps "Play Again" on /game-over, ngAfterViewInit does
+   * NOT run again. ionViewDidEnter is called every time this page becomes active,
+   * guaranteeing the game loop restarts fresh with no stuck state.
+   */
+  ionViewDidEnter(): void {
+    if (this.viewInitialized) {
+      this.startNewGame();
+    }
+  }
+
+  ionViewWillLeave(): void {
+    this.cleanupGame();
+  }
+
+  private startNewGame(): void {
+    this.cleanupGame();
+
+    this.finishing = false;
+    this.score.set(0);
+    this.coinsThisRun.set(0);
+    this.lives.set(ECONOMY_CONFIG.startingLives);
+    this.multiplierActive.set(false);
+    this.showLevelUp.set(false);
+    this.paused.set(false);
+    this.showContinuePrompt.set(false);
+    this.continueAdLoading.set(false);
+    this.continueSecondsLeft.set(CONTINUE_COUNTDOWN_SECONDS);
+
+    const canvas = this.canvasRef?.nativeElement;
+    if (!canvas) return;
+
+    // Every fresh run starts at Level 1 with fast, responsive action!
+    const startLevel = 1;
     this.level.set(startLevel);
+
     this.engine = new BallBlasterEngine(
       canvas,
       {
@@ -84,14 +127,29 @@ export class GamePage implements AfterViewInit, OnDestroy {
       startLevel
     );
 
-    this.shopService.equippedCannonId$.subscribe((id) => {
-      const item = this.shopService.getItem(id);
-      if (item) this.engine?.setCannonAccent(item.accent);
-    });
+    const equippedId = localStorage.getItem('bb.shop.equipped-cannon.v1') || 'default-cannon';
+    const item = this.shopService.getItem(equippedId);
+    if (item) this.engine.setCannonAccent(item.accent);
 
     const session = this.gameRewardService.startSession();
     this.sessionId = session.sessionId;
+    this.audioService.startMusic();
     this.engine.start();
+  }
+
+  private cleanupGame(): void {
+    if (this.engine) {
+      this.engine.destroy();
+      this.engine = undefined;
+    }
+    if (this.levelUpTimer) {
+      clearTimeout(this.levelUpTimer);
+      this.levelUpTimer = undefined;
+    }
+    if (this.continueCountdownTimer) {
+      clearTimeout(this.continueCountdownTimer);
+      this.continueCountdownTimer = undefined;
+    }
   }
 
   @HostListener('window:resize')
@@ -100,15 +158,26 @@ export class GamePage implements AfterViewInit, OnDestroy {
   }
 
   togglePause(): void {
-    if (!this.engine) return;
     const next = !this.paused();
     this.paused.set(next);
-    if (next) this.engine.pause();
-    else this.engine.resume();
+    if (this.engine) {
+      if (next) {
+        this.engine.pause();
+        this.audioService.pauseMusic();
+      } else {
+        this.engine.resume();
+        this.audioService.resumeMusic();
+      }
+    }
   }
 
   quitGame(): void {
-    this.engine?.quit();
+    this.paused.set(false);
+    if (this.engine) {
+      this.engine.quit();
+    } else {
+      this.router.navigateByUrl('/home', { replaceUrl: true });
+    }
   }
 
   private handleLevelUp(level: number): void {
@@ -181,23 +250,29 @@ export class GamePage implements AfterViewInit, OnDestroy {
         ballsDestroyed: result.ballsDestroyed,
         destroyedByTier: result.destroyedByTier,
         multiplierHits: result.multiplierHits,
+        coinsEarnedLocal: result.coinsEarnedLocal,
         levelReached: result.levelReached,
       })
-      .subscribe((outcome) => {
-        this.lastGameResultService.set({
-          sessionId: this.sessionId,
-          score: result.score,
-          ballsDestroyed: result.ballsDestroyed,
-          levelReached: result.levelReached,
-          outcome,
-        });
-        this.router.navigateByUrl('/game-over');
+      .subscribe({
+        next: (outcome) => {
+          this.lastGameResultService.set({
+            sessionId: this.sessionId,
+            score: result.score,
+            ballsDestroyed: result.ballsDestroyed,
+            levelReached: result.levelReached,
+            outcome,
+          });
+          this.router.navigateByUrl('/game-over', { replaceUrl: true });
+        },
+        error: (err) => {
+          console.error('Error completing session', err);
+          this.router.navigateByUrl('/game-over', { replaceUrl: true });
+        },
       });
   }
 
   ngOnDestroy(): void {
-    this.engine?.destroy();
-    if (this.levelUpTimer) clearTimeout(this.levelUpTimer);
-    if (this.continueCountdownTimer) clearTimeout(this.continueCountdownTimer);
+    this.cleanupGame();
+    this.shopSub?.unsubscribe();
   }
 }
