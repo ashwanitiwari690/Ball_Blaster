@@ -1,5 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
+import { ViewWillEnter } from '@ionic/angular';
 import { LastGameResultService, LastGameSummary } from '../../core/services/last-game-result.service';
 import { AudioService } from '../../core/services/audio.service';
 import { AdmobService } from '../../core/services/admob.service';
@@ -11,7 +12,7 @@ import { WalletRepositoryPort } from '../../core/ports/wallet-repository.port';
   styleUrls: ['./game-over.page.scss'],
   standalone: false,
 })
-export class GameOverPage implements OnInit {
+export class GameOverPage implements OnInit, ViewWillEnter {
   // Signals throughout — see GamePage's doc comment on this app's zoneless
   // change detection; every one of these changes from an async ad/wallet
   // callback, never from a template-bound event.
@@ -29,7 +30,17 @@ export class GameOverPage implements OnInit {
     private readonly wallet: WalletRepositoryPort
   ) {}
 
+  ionViewWillEnter(): void {
+    this.navigating.set(false);
+  }
+
   ngOnInit(): void {
+    this.processing.set(true);
+    this.doublingCoins.set(false);
+    this.doubledCoins.set(false);
+    this.navigating.set(false);
+    this.summary.set(null);
+
     const summary = this.lastGameResultService.consume();
     if (!summary) {
       this.router.navigateByUrl('/home', { replaceUrl: true });
@@ -81,14 +92,22 @@ export class GameOverPage implements OnInit {
   async playAgain(): Promise<void> {
     if (this.navigating()) return;
     this.navigating.set(true);
-    await this.admobService.maybeShowInterstitialAtBreakpoint();
+    try {
+      await this.admobService.maybeShowInterstitialAtBreakpoint();
+    } catch {
+      // Ad errors should never block the user from playing again
+    }
     this.router.navigateByUrl('/game', { replaceUrl: true });
   }
 
   async goHome(): Promise<void> {
     if (this.navigating()) return;
     this.navigating.set(true);
-    await this.admobService.maybeShowInterstitialAtBreakpoint();
+    try {
+      await this.admobService.maybeShowInterstitialAtBreakpoint();
+    } catch {
+      // Ad errors should never block navigation
+    }
     this.router.navigateByUrl('/home', { replaceUrl: true });
   }
 }

@@ -7,6 +7,8 @@ export interface GameSessionResult {
   ballsDestroyed: number;
   destroyedByTier: Record<BallTier, number>;
   multiplierHits: number;
+  /** Coins accumulated during this run by the engine (includes multipliers and level bonuses). */
+  coinsEarnedLocal?: number;
   /** The level the player was on when the run ended (1 = never completed a level). */
   levelReached: number;
 }

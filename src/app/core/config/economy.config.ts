@@ -29,19 +29,19 @@ export interface BallTierConfig {
 }
 
 export const BALL_TIERS: Record<BallTier, BallTierConfig> = {
-  normal: { tier: 'normal', label: 'Normal', color: '#3b82f6', glow: '#60a5fa', coinValue: 1, minHp: 3, maxHp: 6, speed: 64, radius: 26, weight: 46 },
-  fast: { tier: 'fast', label: 'Fast', color: '#22c55e', glow: '#4ade80', coinValue: 2, minHp: 4, maxHp: 7, speed: 100, radius: 24, weight: 24 },
-  heavy: { tier: 'heavy', label: 'Heavy', color: '#a855f7', glow: '#c084fc', coinValue: 3, minHp: 9, maxHp: 14, speed: 46, radius: 32, weight: 16 },
-  gold: { tier: 'gold', label: 'Gold', color: '#f59e0b', glow: '#fbbf24', coinValue: 5, minHp: 5, maxHp: 8, speed: 74, radius: 27, weight: 10 },
-  boss: { tier: 'boss', label: 'Boss', color: '#ef4444', glow: '#f87171', coinValue: 10, minHp: 22, maxHp: 30, speed: 30, radius: 42, weight: 4 },
+  normal: { tier: 'normal', label: 'Normal', color: '#3b82f6', glow: '#60a5fa', coinValue: 1, minHp: 3, maxHp: 6, speed: 68, radius: 26, weight: 46 },
+  fast: { tier: 'fast', label: 'Fast', color: '#22c55e', glow: '#4ade80', coinValue: 2, minHp: 4, maxHp: 7, speed: 104, radius: 24, weight: 24 },
+  heavy: { tier: 'heavy', label: 'Heavy', color: '#a855f7', glow: '#c084fc', coinValue: 3, minHp: 8, maxHp: 13, speed: 58, radius: 32, weight: 16 },
+  gold: { tier: 'gold', label: 'Gold', color: '#f59e0b', glow: '#fbbf24', coinValue: 5, minHp: 5, maxHp: 8, speed: 78, radius: 27, weight: 10 },
+  boss: { tier: 'boss', label: 'Boss', color: '#ef4444', glow: '#f87171', coinValue: 10, minHp: 18, maxHp: 26, speed: 50, radius: 42, weight: 4 },
 };
 
 export const ECONOMY_CONFIG = {
   /** Coins awarded per ball tier destroyed (mirrors spec section 5/6/52). */
   ballTiers: BALL_TIERS,
 
-  /** Server-enforced ceiling on monetary coins earned from gameplay per day (section 7). */
-  dailyGameplayCoinCap: 150,
+  /** Ceiling on monetary coins earned from gameplay per day. */
+  dailyGameplayCoinCap: 5000,
 
   /** Coins awarded for a rewarded-ad view, and how many are allowed per day (section 32/33). */
   rewardedAdCoins: 5,
@@ -56,7 +56,7 @@ export const ECONOMY_CONFIG = {
    * configured here or anywhere else on the client — that stays entirely
    * server-side, computed by the real redemption API once it exists.
    */
-  minRedemptionCoins: 1000,
+  minRedemptionCoins: 100,
 
   /** Max reward-crediting events accepted per minute, anti-farming (section 8). */
   maxRewardEventsPerMinute: 20,
