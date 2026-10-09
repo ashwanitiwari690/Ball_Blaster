@@ -34,6 +34,7 @@ export class AdmobService {
   private initPromise?: Promise<void>;
   private bannerVisible = false;
   private bannerListenersInitialized = false;
+  private lastKnownBannerHeight = 50;
 
   private interstitialReady = false;
   private interstitialLoading = false;
@@ -61,17 +62,33 @@ export class AdmobService {
   // Banner
   // ---------------------------------------------------------------------
 
+  private bannerOpPromise: Promise<void> = Promise.resolve();
+
+  private initBannerListeners(): void {
+    if (this.bannerListenersInitialized) return;
+    this.bannerListenersInitialized = true;
+
+    void AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => {
+      this.setBannerSpace(info.height);
+    });
+    void AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
+      if (this.bannerVisible && !document.body.classList.contains('has-ad-banner')) {
+        this.setBannerSpace(this.lastKnownBannerHeight || 50);
+      }
+    });
+    void AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => {
+      this.setBannerSpace(0);
+    });
+  }
+
   /** Shows the persistent banner. Safe to call repeatedly — a second call while already visible is a no-op. */
   async showBanner(): Promise<void> {
     if (!this.isSupported) return;
     await this.initialize();
     if (this.bannerVisible) return;
 
-    if (!this.bannerListenersInitialized) {
-      this.bannerListenersInitialized = true;
-      void AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => this.setBannerSpace(info.height));
-      void AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => this.setBannerSpace(0));
-    }
+    this.bannerVisible = true;
+    this.initBannerListeners();
 
     const options: BannerAdOptions = {
       adId: AD_UNIT_IDS.banner,
@@ -79,27 +96,40 @@ export class AdmobService {
       position: BannerAdPosition.BOTTOM_CENTER,
       margin: 0,
     };
-    try {
-      this.bannerVisible = true;
-      // Pre-set standard adaptive banner height (50px) to prevent jump before event fires
-      this.setBannerSpace(50);
-      await AdMob.showBanner(options);
-    } catch {
-      this.bannerVisible = false;
-      this.setBannerSpace(0);
-    }
+
+    this.bannerOpPromise = this.bannerOpPromise.then(async () => {
+      if (!this.bannerVisible) return;
+      try {
+        await AdMob.showBanner(options);
+      } catch {
+        this.bannerVisible = false;
+        this.setBannerSpace(0);
+      }
+    });
+
+    return this.bannerOpPromise;
   }
 
   /** Hides the persistent banner (e.g. entering gameplay, or going offline). */
   async hideBanner(): Promise<void> {
-    if (!this.isSupported || !this.bannerVisible) return;
+    if (!this.isSupported) return;
     this.bannerVisible = false;
+    // Immediately drop navigation downside to the bottom with zero extra gap
     this.setBannerSpace(0);
-    try {
-      await AdMob.hideBanner();
-    } catch {
-      /* nothing to clean up */
-    }
+
+    this.bannerOpPromise = this.bannerOpPromise.then(async () => {
+      try {
+        await AdMob.removeBanner();
+      } catch {
+        try {
+          await AdMob.hideBanner();
+        } catch {
+          /* safe no-op */
+        }
+      }
+    });
+
+    return this.bannerOpPromise;
   }
 
   /** Exposes the banner's live height as CSS vars so bottom-nav and page spacers adjust seamlessly. */
@@ -109,17 +139,19 @@ export class AdmobService {
     const dpr = window.devicePixelRatio || 1;
     const space = raw > 90 ? Math.round(raw / dpr) : raw;
 
-    document.documentElement.style.setProperty('--ad-banner-space', `${space}px`);
     if (space > 0) {
-      document.body.classList.add('has-ad-banner');
+      this.lastKnownBannerHeight = space;
+      document.documentElement.style.setProperty('--ad-banner-space', `${space}px`);
       document.documentElement.style.setProperty('--ad-banner-active', '1');
       document.documentElement.style.setProperty('--bb-nav-bottom-padding', '6px');
       document.documentElement.style.setProperty('--bb-nav-bottom-gap', '5px');
+      document.body.classList.add('has-ad-banner');
     } else {
-      document.body.classList.remove('has-ad-banner');
+      document.documentElement.style.setProperty('--ad-banner-space', '0px');
       document.documentElement.style.setProperty('--ad-banner-active', '0');
-      document.documentElement.style.setProperty('--bb-nav-bottom-padding', 'calc(8px + var(--ion-safe-area-bottom, 0px))');
+      document.documentElement.style.setProperty('--bb-nav-bottom-padding', '8px');
       document.documentElement.style.setProperty('--bb-nav-bottom-gap', '0px');
+      document.body.classList.remove('has-ad-banner');
     }
   }
 

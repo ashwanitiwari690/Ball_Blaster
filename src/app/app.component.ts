@@ -22,9 +22,9 @@ export class AppComponent implements OnInit {
   private readonly isGameRoute = toSignal(
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-      map((e) => e.urlAfterRedirects.startsWith('/game'))
+      map((e) => e.urlAfterRedirects === '/game' || e.urlAfterRedirects.startsWith('/game/'))
     ),
-    { initialValue: this.router.url.startsWith('/game') }
+    { initialValue: this.router.url === '/game' || this.router.url.startsWith('/game/') }
   );
 
   constructor(
