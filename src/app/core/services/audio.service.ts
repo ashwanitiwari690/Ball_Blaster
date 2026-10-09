@@ -108,10 +108,12 @@ export class AudioService {
   }
 
   // ---------------------------------------------------------------------
-  // Gameplay SFX (Boosted volumes)
-  // ---------------------------------------------------------------------
+  private lastShootTime = 0;
   shoot(): void {
-    this.tone(880, 0.05, 'square', 0.52, 0, 1500);
+    const now = performance.now();
+    if (now - this.lastShootTime < 75) return;
+    this.lastShootTime = now;
+    this.tone(880, 0.035, 'square', 0.45, 0, 1500);
   }
 
   private lastHitTime = 0;
