@@ -33,6 +33,7 @@ export class AdmobService {
 
   private initPromise?: Promise<void>;
   private bannerVisible = false;
+  private bannerListenersInitialized = false;
 
   private interstitialReady = false;
   private interstitialLoading = false;
@@ -65,6 +66,13 @@ export class AdmobService {
     if (!this.isSupported) return;
     await this.initialize();
     if (this.bannerVisible) return;
+
+    if (!this.bannerListenersInitialized) {
+      this.bannerListenersInitialized = true;
+      void AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => this.setBannerSpace(info.height));
+      void AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => this.setBannerSpace(0));
+    }
+
     const options: BannerAdOptions = {
       adId: AD_UNIT_IDS.banner,
       adSize: BannerAdSize.ADAPTIVE_BANNER,
@@ -73,8 +81,8 @@ export class AdmobService {
     };
     try {
       this.bannerVisible = true;
-      await AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => this.setBannerSpace(info.height));
-      await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => this.setBannerSpace(0));
+      // Pre-set standard adaptive banner height (50px) to prevent jump before event fires
+      this.setBannerSpace(50);
       await AdMob.showBanner(options);
     } catch {
       this.bannerVisible = false;
@@ -94,9 +102,25 @@ export class AdmobService {
     }
   }
 
-  /** Exposes the banner's live height as a CSS var so page content/bottom-nav can pad/shift around it. */
+  /** Exposes the banner's live height as CSS vars so bottom-nav and page spacers adjust seamlessly. */
   private setBannerSpace(heightPx: number): void {
-    document.documentElement.style.setProperty('--ad-banner-space', `${Math.max(0, heightPx)}px`);
+    const raw = Math.max(0, heightPx);
+    // Standard mobile adaptive banner is 50-60dp. If raw > 90, it is in physical device pixels: convert to CSS pixels.
+    const dpr = window.devicePixelRatio || 1;
+    const space = raw > 90 ? Math.round(raw / dpr) : raw;
+
+    document.documentElement.style.setProperty('--ad-banner-space', `${space}px`);
+    if (space > 0) {
+      document.body.classList.add('has-ad-banner');
+      document.documentElement.style.setProperty('--ad-banner-active', '1');
+      document.documentElement.style.setProperty('--bb-nav-bottom-padding', '6px');
+      document.documentElement.style.setProperty('--bb-nav-bottom-gap', '5px');
+    } else {
+      document.body.classList.remove('has-ad-banner');
+      document.documentElement.style.setProperty('--ad-banner-active', '0');
+      document.documentElement.style.setProperty('--bb-nav-bottom-padding', 'calc(8px + var(--ion-safe-area-bottom, 0px))');
+      document.documentElement.style.setProperty('--bb-nav-bottom-gap', '0px');
+    }
   }
 
   // ---------------------------------------------------------------------

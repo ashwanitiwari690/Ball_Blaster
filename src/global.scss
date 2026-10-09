@@ -221,5 +221,11 @@ ion-content::part(scroll)::-webkit-scrollbar {
 }
 
 .bb-bottom-nav-spacer {
-  height: calc(78px + var(--ad-banner-space, 0px));
+  height: calc(68px + var(--ad-banner-space, 0px));
+}
+
+body.has-ad-banner .bb-bottom-nav {
+  bottom: calc(var(--ad-banner-space, 0px) + 5px) !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid var(--bb-surface-border);
 }

@@ -115,7 +115,7 @@ export class BallBlasterEngine {
   private cannonAccent = '#60a5fa';
 
   private fireTimer = 0;
-  private fireIntervalMs = 220;
+  private fireIntervalMs = 120; // Rapid throw rate for responsive arcade blasting
 
   private spawnTimer = 0;
   private spawnIntervalMs = 1150;
@@ -300,7 +300,10 @@ export class BallBlasterEngine {
   private updateFiring(dt: number): void {
     this.fireTimer += dt;
     if (this.fireTimer >= this.fireIntervalMs) {
-      this.fireTimer = 0;
+      this.fireTimer -= this.fireIntervalMs;
+      if (this.fireTimer > this.fireIntervalMs) {
+        this.fireTimer = 0;
+      }
       this.spawnBullet();
     }
   }
@@ -323,13 +326,34 @@ export class BallBlasterEngine {
   }
 
   private spawnBullet(): void {
-    this.bullets.push({
-      x: this.cannonX,
-      y: this.cannonY() - 34,
-      vy: -0.65,
-      radius: 5,
-      active: true,
-    });
+    // Increased velocity: -1.35 px/ms (over 2x faster flight speed) to rapidly reach and damage incoming balls
+    const bulletSpeed = -1.35;
+    if (this.multiplierActive) {
+      this.bullets.push(
+        {
+          x: this.cannonX - 8,
+          y: this.cannonY() - 34,
+          vy: bulletSpeed,
+          radius: 6,
+          active: true,
+        },
+        {
+          x: this.cannonX + 8,
+          y: this.cannonY() - 34,
+          vy: bulletSpeed,
+          radius: 6,
+          active: true,
+        }
+      );
+    } else {
+      this.bullets.push({
+        x: this.cannonX,
+        y: this.cannonY() - 34,
+        vy: bulletSpeed,
+        radius: 6,
+        active: true,
+      });
+    }
     this.callbacks.onShoot?.();
   }
 
