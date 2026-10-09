@@ -7,17 +7,23 @@
   display: flex;
   justify-content: space-around;
   align-items: center;
-  padding: 6px 6px var(--bb-nav-bottom-padding, calc(8px + var(--ion-safe-area-bottom, 0px)));
+  padding: 6px 6px var(--bb-nav-bottom-padding, 8px);
   background: rgba(15, 22, 56, 0.95);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--bb-surface-border);
-  transition: bottom 0.2s ease, padding 0.2s ease;
+  transition: bottom 0.25s cubic-bezier(0.2, 0.9, 0.3, 1), padding 0.25s ease;
 }
 
 :host-context(body.has-ad-banner) .bb-bottom-nav {
   bottom: calc(var(--ad-banner-space, 0px) + 5px);
   padding: 6px 6px 6px;
   border-bottom: 1px solid var(--bb-surface-border);
+}
+
+:host-context(body:not(.has-ad-banner)) .bb-bottom-nav {
+  bottom: 0px;
+  padding-bottom: 8px;
+  border-bottom: none;
 }
 
 .bb-bottom-nav-item {
