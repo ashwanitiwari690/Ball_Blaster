@@ -12,7 +12,7 @@ const androidRoot = path.join(__dirname, '..', 'android');
 // Google's public sample AdMob App ID — safe while every ad unit ID in the app is still a
 // test ID (see src/app/core/config/admob.config.ts). Replace with this app's own App ID from
 // the AdMob console (Apps -> Add app) before a production release.
-const ADMOB_APP_ID = 'ca-app-pub-3940256099942544~3347511713';
+const ADMOB_APP_ID = 'ca-app-pub-2030586584805301~5312341236';
 
 function fixStrings() {
   const stringsPath = path.join(androidRoot, 'app', 'src', 'main', 'res', 'values', 'strings.xml');

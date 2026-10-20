@@ -8,7 +8,7 @@ import {
   BannerAdSize,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
-import { AD_UNIT_IDS, INTERSTITIAL_EVERY_N_ROUNDS, INTERSTITIAL_TIMEOUT_MS } from '../config/admob.config';
+import { AD_UNIT_IDS, INTERSTITIAL_EVERY_N_ROUNDS, INTERSTITIAL_MIN_INTERVAL_MS, INTERSTITIAL_TIMEOUT_MS } from '../config/admob.config';
 
 /**
  * Thin wrapper around @capacitor-community/admob — the ONLY file in the app
@@ -40,6 +40,7 @@ export class AdmobService {
   private interstitialLoading = false;
   private interstitialShowing = false;
   private roundsSinceInterstitial = 0;
+  private lastFullScreenAdTime = 0;
 
   private rewardedReady = false;
   private rewardedLoading = false;
@@ -48,7 +49,7 @@ export class AdmobService {
   initialize(): Promise<void> {
     if (!this.isSupported) return Promise.resolve();
     if (!this.initPromise) {
-      this.initPromise = AdMob.initialize({ initializeForTesting: true })
+      this.initPromise = AdMob.initialize({ initializeForTesting: false })
         .then(() => {
           void this.preloadInterstitial();
           void this.preloadRewarded();
@@ -182,7 +183,10 @@ export class AdmobService {
   async maybeShowInterstitialAtBreakpoint(): Promise<void> {
     if (!this.isSupported) return;
     this.roundsSinceInterstitial++;
-    if (this.roundsSinceInterstitial < INTERSTITIAL_EVERY_N_ROUNDS) return;
+    const timeSinceLastAd = Date.now() - this.lastFullScreenAdTime;
+    if (this.roundsSinceInterstitial < INTERSTITIAL_EVERY_N_ROUNDS || timeSinceLastAd < INTERSTITIAL_MIN_INTERVAL_MS) {
+      return;
+    }
     this.roundsSinceInterstitial = 0;
     await this.showInterstitial();
   }
@@ -207,6 +211,7 @@ export class AdmobService {
       this.interstitialReady = false;
       try {
         await AdMob.showInterstitial();
+        this.lastFullScreenAdTime = Date.now();
         void this.preloadInterstitial();
         return true;
       } catch {
@@ -274,6 +279,8 @@ export class AdmobService {
         settled = true;
         cleanup();
         this.rewardedShowing = false;
+        this.lastFullScreenAdTime = Date.now();
+        this.roundsSinceInterstitial = 0;
         void this.preloadRewarded();
         resolve(granted);
       };
@@ -297,6 +304,8 @@ export class AdmobService {
     return new Promise((resolve) =>
       setTimeout(() => {
         this.rewardedShowing = false;
+        this.lastFullScreenAdTime = Date.now();
+        this.roundsSinceInterstitial = 0;
         resolve(true);
       }, 1500)
     );
