@@ -77,7 +77,9 @@ export class AdmobService {
         this.setBannerSpace(this.lastKnownBannerHeight || 50);
       }
     });
-    void AdMob.addListener(BannerAdPluginEvents.FailedToLoad, () => {
+    void AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err) => {
+      console.warn("[AdMob Banner] FailedToLoad:", err);
+
       this.setBannerSpace(0);
     });
   }
@@ -103,7 +105,7 @@ export class AdmobService {
       try {
         await AdMob.showBanner(options);
       } catch {
-        this.bannerVisible = false;
+                this.bannerVisible = false;
         this.setBannerSpace(0);
       }
     });
@@ -122,10 +124,10 @@ export class AdmobService {
       try {
         await AdMob.removeBanner();
       } catch {
-        try {
+                try {
           await AdMob.hideBanner();
         } catch {
-          /* safe no-op */
+                  /* safe no-op */
         }
       }
     });
@@ -167,7 +169,9 @@ export class AdmobService {
     try {
       await AdMob.prepareInterstitial({ adId: AD_UNIT_IDS.interstitial });
       this.interstitialReady = true;
-    } catch {
+      console.log("[AdMob Interstitial] Ready");
+    } catch (err) {
+      console.warn("[AdMob Interstitial] Failed to load:", err);
       this.interstitialReady = false;
     } finally {
       this.interstitialLoading = false;
@@ -215,7 +219,7 @@ export class AdmobService {
         void this.preloadInterstitial();
         return true;
       } catch {
-        void this.preloadInterstitial();
+                void this.preloadInterstitial();
         return false;
       }
     } finally {
@@ -234,7 +238,9 @@ export class AdmobService {
     try {
       await AdMob.prepareRewardVideoAd({ adId: AD_UNIT_IDS.rewarded });
       this.rewardedReady = true;
-    } catch {
+      console.log("[AdMob Rewarded] Ready");
+    } catch (err) {
+      console.warn("[AdMob Rewarded] Failed to load:", err);
       this.rewardedReady = false;
     } finally {
       this.rewardedLoading = false;
