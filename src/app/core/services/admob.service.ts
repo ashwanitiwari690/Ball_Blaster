@@ -1,4 +1,4 @@
-import { Injectable } from '@angular/core';
+import { Injectable, signal } from '@angular/core';
 import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 import {
   AdMob,
@@ -8,53 +8,49 @@ import {
   BannerAdSize,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
-import { AD_UNIT_IDS, INTERSTITIAL_EVERY_N_ROUNDS, INTERSTITIAL_MIN_INTERVAL_MS, INTERSTITIAL_TIMEOUT_MS } from '../config/admob.config';
+import {
+  AD_UNIT_IDS,
+  INTERSTITIAL_EVERY_N_ROUNDS,
+  INTERSTITIAL_MIN_INTERVAL_MS,
+  INTERSTITIAL_TIMEOUT_MS,
+} from '../config/admob.config';
 
 /**
  * Thin wrapper around @capacitor-community/admob — the ONLY file in the app
- * that talks to the plugin directly. Every page goes through this service,
- * never through `AdMob` itself, so ad-provider details never leak into page
- * components.
- *
- * Ads only run on native platforms (`Capacitor.isNativePlatform()`); on the
- * web the plugin isn't present at all, so every method here is a safe no-op
- * that resolves `false`/does nothing. Callers must treat `false` from
- * `showRewarded()` as "no reward" — never grant anything optimistically.
- *
- * Persistent banner: shown on every screen except live gameplay (where it
- * would eat into the cannon's drag area), toggled by `AppComponent` reacting
- * to route changes — see `showBanner()`/`hideBanner()`. AdMob is initialized
- * at boot so interstitial/rewarded ads are preloaded and ready by the time
- * the player reaches a breakpoint or a reward flow.
+ * that talks to the plugin directly. Follows the robust ad-serving architecture
+ * from Escape the Monster.
  */
 @Injectable({ providedIn: 'root' })
 export class AdmobService {
   readonly isSupported = Capacitor.isNativePlatform();
 
+  /** True while a rewarded ad is loading or being shown — prevents double triggers. */
+  readonly rewardedBusy = signal(false);
+
   private initPromise?: Promise<void>;
   private bannerVisible = false;
-  private bannerListenersInitialized = false;
   private lastKnownBannerHeight = 50;
 
   private interstitialReady = false;
   private interstitialLoading = false;
-  private interstitialShowing = false;
+  private interstitialBusy = false;
   private roundsSinceInterstitial = 0;
   private lastFullScreenAdTime = 0;
 
   private rewardedReady = false;
   private rewardedLoading = false;
-  private rewardedShowing = false;
 
   initialize(): Promise<void> {
     if (!this.isSupported) return Promise.resolve();
     if (!this.initPromise) {
-      this.initPromise = AdMob.initialize({ initializeForTesting: false })
+      this.initPromise = AdMob.initialize({})
         .then(() => {
           void this.preloadInterstitial();
           void this.preloadRewarded();
         })
-        .catch(() => {});
+        .catch((err) => {
+          console.warn('[AdMob] initialize failed:', err);
+        });
     }
     return this.initPromise;
   }
@@ -63,35 +59,20 @@ export class AdmobService {
   // Banner
   // ---------------------------------------------------------------------
 
-  private bannerOpPromise: Promise<void> = Promise.resolve();
-
-  private initBannerListeners(): void {
-    if (this.bannerListenersInitialized) return;
-    this.bannerListenersInitialized = true;
-
-    void AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => {
-      this.setBannerSpace(info.height);
-    });
-    void AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
-      if (this.bannerVisible && !document.body.classList.contains('has-ad-banner')) {
-        this.setBannerSpace(this.lastKnownBannerHeight || 50);
-      }
-    });
-    void AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err) => {
-      console.warn("[AdMob Banner] FailedToLoad:", err);
-
-      this.setBannerSpace(0);
-    });
-  }
-
-  /** Shows the persistent banner. Safe to call repeatedly — a second call while already visible is a no-op. */
+  /** Shows the persistent bottom banner. Safe to call repeatedly. */
   async showBanner(): Promise<void> {
     if (!this.isSupported) return;
     await this.initialize();
-    if (this.bannerVisible) return;
 
-    this.bannerVisible = true;
-    this.initBannerListeners();
+    if (this.bannerVisible) {
+      try {
+        await AdMob.resumeBanner();
+        this.setBannerSpace(this.lastKnownBannerHeight || 50);
+      } catch (err) {
+        console.warn('[AdMob] resumeBanner failed:', err);
+      }
+      return;
+    }
 
     const options: BannerAdOptions = {
       adId: AD_UNIT_IDS.banner,
@@ -100,45 +81,37 @@ export class AdmobService {
       margin: 0,
     };
 
-    this.bannerOpPromise = this.bannerOpPromise.then(async () => {
-      if (!this.bannerVisible) return;
-      try {
-        await AdMob.showBanner(options);
-      } catch {
-                this.bannerVisible = false;
+    try {
+      this.bannerVisible = true;
+      await AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => {
+        this.setBannerSpace(info.height);
+      });
+      await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err) => {
+        console.warn('[AdMob Banner] FailedToLoad:', err);
         this.setBannerSpace(0);
-      }
-    });
-
-    return this.bannerOpPromise;
+      });
+      await AdMob.showBanner(options);
+    } catch (err) {
+      console.warn('[AdMob Banner] showBanner error:', err);
+      this.bannerVisible = false;
+      this.setBannerSpace(0);
+    }
   }
 
-  /** Hides the persistent banner (e.g. entering gameplay, or going offline). */
+  /** Hides the banner (e.g. during active gameplay). Cheap to call every screen change. */
   async hideBanner(): Promise<void> {
-    if (!this.isSupported) return;
-    this.bannerVisible = false;
-    // Immediately drop navigation downside to the bottom with zero extra gap
+    if (!this.isSupported || !this.bannerVisible) return;
+    try {
+      await AdMob.hideBanner();
+    } catch (err) {
+      console.warn('[AdMob] hideBanner error:', err);
+    }
     this.setBannerSpace(0);
-
-    this.bannerOpPromise = this.bannerOpPromise.then(async () => {
-      try {
-        await AdMob.removeBanner();
-      } catch {
-                try {
-          await AdMob.hideBanner();
-        } catch {
-                  /* safe no-op */
-        }
-      }
-    });
-
-    return this.bannerOpPromise;
   }
 
   /** Exposes the banner's live height as CSS vars so bottom-nav and page spacers adjust seamlessly. */
   private setBannerSpace(heightPx: number): void {
     const raw = Math.max(0, heightPx);
-    // Standard mobile adaptive banner is 50-60dp. If raw > 90, it is in physical device pixels: convert to CSS pixels.
     const dpr = window.devicePixelRatio || 1;
     const space = raw > 90 ? Math.round(raw / dpr) : raw;
 
@@ -169,9 +142,9 @@ export class AdmobService {
     try {
       await AdMob.prepareInterstitial({ adId: AD_UNIT_IDS.interstitial });
       this.interstitialReady = true;
-      console.log("[AdMob Interstitial] Ready");
+      console.log('[AdMob Interstitial] Ready');
     } catch (err) {
-      console.warn("[AdMob Interstitial] Failed to load:", err);
+      console.warn('[AdMob Interstitial] Failed to load:', err);
       this.interstitialReady = false;
     } finally {
       this.interstitialLoading = false;
@@ -180,9 +153,7 @@ export class AdmobService {
 
   /**
    * Call at a natural breakpoint (e.g. leaving a finished game round). Shows
-   * an interstitial only every INTERSTITIAL_EVERY_N_ROUNDS calls, so ads stay
-   * frequent without breaching AdMob's full-screen-ad frequency policies or
-   * annoying a player who just finished a quick run.
+   * an interstitial only every INTERSTITIAL_EVERY_N_ROUNDS calls and after cooldown.
    */
   async maybeShowInterstitialAtBreakpoint(): Promise<void> {
     if (!this.isSupported) return;
@@ -197,19 +168,19 @@ export class AdmobService {
 
   /**
    * Shows the interstitial if one is ready (or can be loaded within a short
-   * timeout), and resolves once it's dismissed. Gives up after
-   * INTERSTITIAL_TIMEOUT_MS so a slow/unavailable ad never blocks whatever
-   * navigation it's gating. Resolves true only if an ad was actually shown.
-   * Re-entrant calls while one is already showing resolve false immediately
-   * instead of stacking requests.
+   * timeout) and resolves once it's dismissed. Gives up after INTERSTITIAL_TIMEOUT_MS
+   * so an ad never blocks navigation. Returns true only if an ad was actually shown.
    */
   async showInterstitial(): Promise<boolean> {
-    if (!this.isSupported || this.interstitialShowing) return false;
-    this.interstitialShowing = true;
+    if (!this.isSupported || this.interstitialBusy) return false;
+    this.interstitialBusy = true;
     try {
       await this.initialize();
       if (!this.interstitialReady) {
-        await Promise.race([this.preloadInterstitial(), new Promise<void>((resolve) => setTimeout(resolve, INTERSTITIAL_TIMEOUT_MS))]);
+        await Promise.race([
+          this.preloadInterstitial(),
+          new Promise<void>((resolve) => setTimeout(resolve, INTERSTITIAL_TIMEOUT_MS)),
+        ]);
       }
       if (!this.interstitialReady) return false;
       this.interstitialReady = false;
@@ -218,12 +189,13 @@ export class AdmobService {
         this.lastFullScreenAdTime = Date.now();
         void this.preloadInterstitial();
         return true;
-      } catch {
-                void this.preloadInterstitial();
+      } catch (err) {
+        console.warn('[AdMob Interstitial] show error:', err);
+        void this.preloadInterstitial();
         return false;
       }
     } finally {
-      this.interstitialShowing = false;
+      this.interstitialBusy = false;
     }
   }
 
@@ -238,9 +210,9 @@ export class AdmobService {
     try {
       await AdMob.prepareRewardVideoAd({ adId: AD_UNIT_IDS.rewarded });
       this.rewardedReady = true;
-      console.log("[AdMob Rewarded] Ready");
+      console.log('[AdMob Rewarded] Ready');
     } catch (err) {
-      console.warn("[AdMob Rewarded] Failed to load:", err);
+      console.warn('[AdMob Rewarded] Failed to load:', err);
       this.rewardedReady = false;
     } finally {
       this.rewardedLoading = false;
@@ -248,68 +220,61 @@ export class AdmobService {
   }
 
   /**
-   * Shows the rewarded video and resolves `true` ONLY when the user actually
-   * earns the reward. Never resolves `true` optimistically — a dismiss
-   * before completion, a show failure, or an ad that never finished loading
-   * all resolve `false`. This is the one method every coin/unlock/continue
-   * grant in the app must gate on; nothing should credit a reward on the
-   * button tap or on the ad merely starting.
-   *
-   * Also serializes itself: every rewarded-ad placement in the app (wallet
-   * coins, double-coins, extra-life continue, ...) shares this one guard, so
-   * a double tap — or two different ad buttons somehow triggered together —
-   * can never show two rewarded ads, or resolve two rewards, at once.
-   *
-   * On the web (AdMob never runs outside a native build), this resolves via
-   * a simulated delay instead of failing outright, purely so every rewarded
-   * placement in the app stays testable from a desktop browser during
-   * development. That path is never reachable in a real native build.
+   * Shows the rewarded video and resolves true ONLY when AdMob's own
+   * reward callback fires. Never resolves true optimistically.
+   * At most one rewarded ad can be in flight at a time (see `rewardedBusy`).
    */
   async showRewarded(): Promise<boolean> {
-    if (this.rewardedShowing) return false;
     if (!this.isSupported) return this.simulateWebRewardedAd();
-    await this.initialize();
-    if (!this.rewardedReady) {
-      await Promise.race([this.preloadRewarded(), new Promise<void>((resolve) => setTimeout(resolve, INTERSTITIAL_TIMEOUT_MS))]);
+    if (this.rewardedBusy()) return false;
+    this.rewardedBusy.set(true);
+
+    try {
+      await this.initialize();
+      if (!this.rewardedReady) await this.preloadRewarded();
+      if (!this.rewardedReady) return false;
+      this.rewardedReady = false;
+
+      return await new Promise<boolean>((resolve) => {
+        let settled = false;
+        const handles: Promise<PluginListenerHandle>[] = [];
+        const cleanup = () => handles.forEach((h) => h.then((handle) => handle.remove()).catch(() => {}));
+        const finish = (granted: boolean) => {
+          if (settled) return;
+          settled = true;
+          cleanup();
+          this.lastFullScreenAdTime = Date.now();
+          this.roundsSinceInterstitial = 0;
+          void this.preloadRewarded();
+          resolve(granted);
+        };
+
+        handles.push(AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finish(false)));
+        handles.push(
+          AdMob.addListener(RewardAdPluginEvents.FailedToShow, (err) => {
+            console.warn('[AdMob Rewarded] FailedToShow:', err);
+            finish(false);
+          })
+        );
+
+        AdMob.showRewardVideoAd()
+          .then(() => finish(true))
+          .catch((err) => {
+            console.warn('[AdMob Rewarded] show error:', err);
+            finish(false);
+          });
+      });
+    } finally {
+      this.rewardedBusy.set(false);
     }
-    if (!this.rewardedReady) return false;
-    this.rewardedReady = false;
-    this.rewardedShowing = true;
-
-    return new Promise<boolean>((resolve) => {
-      let settled = false;
-      const handles: Promise<PluginListenerHandle>[] = [];
-      const cleanup = () => handles.forEach((h) => h.then((handle) => handle.remove()).catch(() => {}));
-      const finish = (granted: boolean) => {
-        if (settled) return;
-        settled = true;
-        cleanup();
-        this.rewardedShowing = false;
-        this.lastFullScreenAdTime = Date.now();
-        this.roundsSinceInterstitial = 0;
-        void this.preloadRewarded();
-        resolve(granted);
-      };
-
-      // showRewardVideoAd()'s promise resolves with the earned reward item in
-      // this plugin version, but a dismiss-before-completion or a show
-      // failure is raced in explicitly too, defensively, so a player backing
-      // out early can never be misread as having earned the reward.
-      handles.push(AdMob.addListener(RewardAdPluginEvents.Dismissed, () => finish(false)));
-      handles.push(AdMob.addListener(RewardAdPluginEvents.FailedToShow, () => finish(false)));
-
-      AdMob.showRewardVideoAd()
-        .then(() => finish(true))
-        .catch(() => finish(false));
-    });
   }
 
-  /** Dev/browser-only stand-in — see the doc comment on `showRewarded()`. */
+  /** Dev/browser-only stand-in for desktop testing. */
   private simulateWebRewardedAd(): Promise<boolean> {
-    this.rewardedShowing = true;
+    this.rewardedBusy.set(true);
     return new Promise((resolve) =>
       setTimeout(() => {
-        this.rewardedShowing = false;
+        this.rewardedBusy.set(false);
         this.lastFullScreenAdTime = Date.now();
         this.roundsSinceInterstitial = 0;
         resolve(true);

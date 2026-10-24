@@ -1,7 +1,7 @@
 export const AD_UNIT_IDS = {
   banner: 'ca-app-pub-2030586584805301/1405931990',
   interstitial: 'ca-app-pub-2030586584805301/5068265823',
-  rewarded: 'ca-app-pub-2030586584805301/4737093336',
+  rewarded: 'ca-app-pub-2030586584805301/7646663441',
 } as const;
 
 /** Show interstitials at most once every N completed rounds (policy-safe frequency capping). */
