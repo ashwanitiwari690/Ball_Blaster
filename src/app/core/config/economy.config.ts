@@ -44,7 +44,7 @@ export const ECONOMY_CONFIG = {
   dailyGameplayCoinCap: 5000,
 
   /** Coins awarded for a rewarded-ad view, and how many are allowed per day (section 32/33). */
-  rewardedAdCoins: 5,
+  rewardedAdCoins: 10,
   maxAdRewardsPerDay: 5,
 
   /** 7-day login streak rewards, index 0 = Day 1 (section: Daily Rewards screen). */

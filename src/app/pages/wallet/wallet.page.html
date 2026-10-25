@@ -39,7 +39,7 @@
         <ion-icon [name]="watchingAd() ? 'hourglass' : 'play-circle'"></ion-icon>
       </div>
       <div class="wallet-ad-info">
-        <div class="wallet-ad-title">{{ watchingAd() ? 'Watching ad…' : 'Watch Ad for +5 Coins' }}</div>
+        <div class="wallet-ad-title">{{ watchingAd() ? 'Watching ad…' : ('Watch Ad for +' + rewardedAdCoins + ' Coins') }}</div>
         <div class="wallet-ad-sub">{{ adsRemaining$ | async }} left today</div>
       </div>
       <ion-icon name="chevron-forward"></ion-icon>

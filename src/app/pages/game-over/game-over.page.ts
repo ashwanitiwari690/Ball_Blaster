@@ -1,6 +1,6 @@
 import { Component, OnInit, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { ViewWillEnter } from '@ionic/angular';
+import { ViewWillEnter, ToastController } from '@ionic/angular';
 import { LastGameResultService, LastGameSummary } from '../../core/services/last-game-result.service';
 import { AudioService } from '../../core/services/audio.service';
 import { AdmobService } from '../../core/services/admob.service';
@@ -27,7 +27,8 @@ export class GameOverPage implements OnInit, ViewWillEnter {
     private readonly lastGameResultService: LastGameResultService,
     private readonly audioService: AudioService,
     private readonly admobService: AdmobService,
-    private readonly wallet: WalletRepositoryPort
+    private readonly wallet: WalletRepositoryPort,
+    private readonly toastCtrl: ToastController
   ) {}
 
   ionViewWillEnter(): void {
@@ -71,7 +72,21 @@ export class GameOverPage implements OnInit, ViewWillEnter {
     this.doublingCoins.set(true);
     try {
       const watched = await this.admobService.showRewarded();
-      if (!watched) return;
+      if (!watched) {
+        const reason = this.admobService.lastRewardFailureReason;
+        const msg =
+          reason === 'dismissed_early'
+            ? 'Ad closed early — bonus coins not credited.'
+            : 'Ad is currently unavailable. Please try again shortly.';
+        const toast = await this.toastCtrl.create({
+          message: msg,
+          duration: 1800,
+          color: 'warning',
+          position: 'bottom',
+        });
+        await toast.present();
+        return;
+      }
       this.wallet
         .credit({
           amount: s.outcome.coinsEarned,
@@ -79,10 +94,17 @@ export class GameOverPage implements OnInit, ViewWillEnter {
           source: 'game-over-double',
           referenceId: this.doubleReferenceId(s.sessionId),
         })
-        .subscribe((wallet) => {
+        .subscribe(async (wallet) => {
           this.doubledCoins.set(true);
           this.audioService.coinEarned();
           this.summary.update((current) => (current ? { ...current, outcome: { ...current.outcome, wallet } } : current));
+          const toast = await this.toastCtrl.create({
+            message: `2x Bonus credited! +${s.outcome.coinsEarned} coins added.`,
+            duration: 1800,
+            color: 'success',
+            position: 'bottom',
+          });
+          await toast.present();
         });
     } finally {
       this.doublingCoins.set(false);

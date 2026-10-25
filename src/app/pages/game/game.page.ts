@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, ViewChild, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { ViewDidEnter, ViewWillLeave } from '@ionic/angular';
+import { ViewDidEnter, ViewWillLeave, ToastController } from '@ionic/angular';
 import { Subscription } from 'rxjs';
 import { BallBlasterEngine } from '../../core/game-engine/ball-blaster-engine';
 import { GameRewardService } from '../../core/services/game-reward.service';
@@ -60,7 +60,8 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
     private readonly profileService: PlayerProfileService,
     private readonly lastGameResultService: LastGameResultService,
     private readonly audioService: AudioService,
-    private readonly admobService: AdmobService
+    private readonly admobService: AdmobService,
+    private readonly toastCtrl: ToastController
   ) {}
 
   ngAfterViewInit(): void {
@@ -221,9 +222,26 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
       this.showContinuePrompt.set(false);
       this.audioService.claimReward();
       this.engine?.grantContinue();
+      const toast = await this.toastCtrl.create({
+        message: 'Revived with 1 life! Blast away!',
+        duration: 1800,
+        color: 'success',
+        position: 'bottom',
+      });
+      await toast.present();
     } else {
-      // Ad unavailable/closed early — let the player retry or bail out, not
-      // silently fail them out of the run.
+      const reason = this.admobService.lastRewardFailureReason;
+      const msg =
+        reason === 'dismissed_early'
+          ? 'Ad closed early — continue not granted.'
+          : 'Ad is currently unavailable. Please try again.';
+      const toast = await this.toastCtrl.create({
+        message: msg,
+        duration: 1800,
+        color: 'warning',
+        position: 'bottom',
+      });
+      await toast.present();
       this.tickContinueCountdown();
     }
   }

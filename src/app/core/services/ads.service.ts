@@ -56,7 +56,14 @@ export class AdsService {
 
       const watched = await this.admob.showRewarded();
       if (!watched) {
-        return { granted: false, coins: 0, reason: 'Ad was not completed.' };
+        const reason = this.admob.lastRewardFailureReason;
+        let message = 'Ad is currently unavailable. Please try again shortly.';
+        if (reason === 'dismissed_early') {
+          message = 'Ad was closed early — reward not earned.';
+        } else if (reason === 'busy') {
+          message = 'An ad is already playing. Please wait.';
+        }
+        return { granted: false, coins: 0, reason: message };
       }
 
       await firstValueFrom(

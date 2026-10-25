@@ -1,8 +1,17 @@
+import { environment } from '../../../environments/environment';
+
 export const AD_UNIT_IDS = {
   banner: 'ca-app-pub-2030586584805301/1405931990',
   interstitial: 'ca-app-pub-2030586584805301/5068265823',
   rewarded: 'ca-app-pub-2030586584805301/7646663441',
 } as const;
+
+/**
+ * When true, requests AdMob test inventory so ads always display reliably during
+ * development and testing without triggering invalid traffic strikes.
+ * In production release builds (environment.production: true), requests live ads.
+ */
+export const IS_TESTING_ADS = !environment.production;
 
 /** Show interstitials at most once every N completed rounds (policy-safe frequency capping). */
 export const INTERSTITIAL_EVERY_N_ROUNDS = 3;
@@ -13,5 +22,5 @@ export const INTERSTITIAL_EVERY_N_ROUNDS = 3;
  */
 export const INTERSTITIAL_MIN_INTERVAL_MS = 60000; // 60 seconds
 
-/** Give up waiting for an interstitial/rewarded ad to load/show after this long, so it never blocks navigation. */
+/** Give up waiting for an interstitial ad to load/show after this long, so it never blocks navigation. */
 export const INTERSTITIAL_TIMEOUT_MS = 4000;

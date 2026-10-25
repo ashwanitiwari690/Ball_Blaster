@@ -4,6 +4,7 @@ import { ToastController } from '@ionic/angular';
 import { WalletService } from '../../core/services/wallet.service';
 import { AdsService } from '../../core/services/ads.service';
 import { AudioService } from '../../core/services/audio.service';
+import { ECONOMY_CONFIG } from '../../core/config/economy.config';
 
 @Component({
   selector: 'app-wallet',
@@ -15,6 +16,7 @@ export class WalletPage {
   readonly wallet$ = this.walletService.wallet$;
   readonly adsRemaining$ = this.adsService.remainingToday$;
   readonly minRedemptionCoins = this.walletService.minRedemptionCoins;
+  readonly rewardedAdCoins = ECONOMY_CONFIG.rewardedAdCoins;
   // A signal, not a plain field: this app runs zoneless, and the flip back
   // to false happens inside an async RxJS callback (AdsService simulates
   // ad-view latency), which zoneless change detection cannot see otherwise.

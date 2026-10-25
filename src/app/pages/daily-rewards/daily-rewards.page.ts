@@ -51,7 +51,12 @@ export class DailyRewardsPage {
     try {
       const watched = await this.admobService.showRewarded();
       if (!watched) {
-        this.toast('Ad not completed — reward not doubled.', 'warning');
+        const reason = this.admobService.lastRewardFailureReason;
+        if (reason === 'dismissed_early') {
+          this.toast('Ad was closed early — reward not doubled.', 'warning');
+        } else {
+          this.toast('Ad is currently unavailable. Please try again shortly.', 'warning');
+        }
         return;
       }
       this.dailyRewards.doubleToday().subscribe({
