@@ -1,4 +1,21 @@
-export type ShopCategory = 'cannon' | 'ball' | 'effect' | 'theme';
+export type ShopCategory = 'cannon' | 'ball' | 'shot' | 'effect' | 'theme';
+
+export type EquippedItems = Record<ShopCategory, string>;
+
+/** Cosmetic choices consumed by the canvas engine; damage and rewards stay unchanged. */
+export interface GameAppearance {
+  cannonColor: string;
+  shotColor: string;
+  ballSkin: 'classic' | 'neon' | 'galaxy';
+  effect: 'standard' | 'explosion' | 'trail';
+  theme: 'arcade' | 'crimson';
+}
+
+export interface ShopItemState extends ShopItem {
+  owned: boolean;
+  equipped: boolean;
+  affordable: boolean;
+}
 
 export interface ShopItem {
   id: string;

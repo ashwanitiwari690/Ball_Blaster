@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
-import { Observable, of, switchMap, take } from 'rxjs';
+import { Observable, map, of, switchMap, take } from 'rxjs';
 import { WalletRepositoryPort } from '../ports/wallet-repository.port';
-import { BALL_TIERS, BallTier, ECONOMY_CONFIG, minBallsToCompleteLevels } from '../config/economy.config';
+import { BALL_TIERS, BallTier, ECONOMY_CONFIG } from '../config/economy.config';
 import { GameSessionResult, RewardOutcome } from '../models/game.models';
 
 function newId(): string {
@@ -44,7 +44,7 @@ export class GameRewardService {
         const refId = result.sessionId || newId();
         return this.wallet
           .credit({ amount: award, type: 'GAME_REWARD', source: 'gameplay', referenceId: refId })
-          .pipe(switchMap((w) => of<RewardOutcome>({ coinsEarned: award, cappedByDailyLimit, wallet: w })));
+          .pipe(map((wallet) => ({ coinsEarned: award, cappedByDailyLimit, wallet })));
       })
     );
   }

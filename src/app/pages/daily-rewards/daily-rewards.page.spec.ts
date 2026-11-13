@@ -1,3 +1,4 @@
+import { configurePageTestBed } from '../../../testing/page-test-providers';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { DailyRewardsPage } from './daily-rewards.page';
 
@@ -6,6 +7,7 @@ describe('DailyRewardsPage', () => {
   let fixture: ComponentFixture<DailyRewardsPage>;
 
   beforeEach(() => {
+    configurePageTestBed();
     fixture = TestBed.createComponent(DailyRewardsPage);
     component = fixture.componentInstance;
     fixture.detectChanges();

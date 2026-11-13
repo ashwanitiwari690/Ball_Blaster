@@ -2,49 +2,73 @@
   <div class="shop-wrap">
     <div class="shop-header">
       <h1>Shop</h1>
-      <span class="bb-pill shop-coin-pill" *ngIf="wallet$ | async as wallet">
+      @if (wallet$ | async; as wallet) {
+      <span class="bb-pill shop-coin-pill">
         <app-coin-icon [size]="16"></app-coin-icon>
         {{ wallet.availableCoins | number }}
       </span>
+      }
     </div>
 
     <div class="shop-tabs">
+      @for (c of categories; track c.key) {
       <button
         class="shop-tab"
-        *ngFor="let c of categories"
         [class.active]="category === c.key"
         (click)="setCategory(c.key)"
         type="button"
       >
         {{ c.label }}
       </button>
+      }
     </div>
 
-    <div class="shop-list" *ngIf="items$ | async as items">
-      <div class="shop-item" *ngFor="let item of items" (click)="openItem(item.id, item.category)">
+    <p class="shop-help">Unlock once with coins or a rewarded ad. Your new item is equipped automatically.</p>
+
+    @if (items$ | async; as items) {
+    <div class="shop-list">
+      @for (item of items; track item.id) {
+      <article class="shop-item" [attr.data-item-id]="item.id">
         <div class="shop-item-icon" [style.background]="item.accent + '22'" [style.color]="item.accent">
           <ion-icon [name]="item.icon"></ion-icon>
         </div>
         <div class="shop-item-info">
-          <div class="shop-item-name">{{ item.name }}</div>
-          <div class="shop-item-price" *ngIf="item.price > 0">
+          <button type="button" class="shop-item-name" (click)="openItem(item.id)">{{ item.name }} <span aria-hidden="true">&rsaquo;</span></button>
+          <div class="shop-item-description">{{ item.description }}</div>
+          @if (item.price > 0) {
+          <div class="shop-item-price">
             <app-coin-icon [size]="14"></app-coin-icon>
             {{ item.price | number }}
           </div>
-          <div class="shop-item-price" *ngIf="item.price === 0">Included</div>
+          } @else {
+            <div class="shop-item-price">Included</div>
+          }
         </div>
+        <div class="shop-item-actions">
+        @if (item.owned) {
         <ion-button
           size="small"
-          [fill]="item.owned ? 'outline' : 'solid'"
-          [class]="item.owned ? 'bb-btn-outline shop-owned-btn' : 'bb-btn-primary'"
-          [class.shop-buy-btn-unaffordable]="!item.owned && !item.affordable"
-          [disabled]="item.owned"
-          (click)="buy(item.id, $event)"
+          [fill]="item.equipped ? 'outline' : 'solid'"
+          [class]="item.equipped ? 'bb-btn-outline' : 'bb-btn-primary'"
+          [disabled]="item.equipped || (busy$ | async) || pendingItemId() !== null"
+          (click)="equip(item.id)"
         >
-          {{ item.owned ? 'Owned' : 'Buy' }}
+          {{ item.equipped ? 'Equipped' : 'Equip' }}
         </ion-button>
+        } @else {
+          <ion-button size="small" class="bb-btn-primary" [disabled]="(busy$ | async) || pendingItemId() !== null || !item.affordable" (click)="buy(item.id)">
+            {{ pendingItemId() === item.id && pendingMethod() === 'coins' ? 'Buying...' : 'Buy · ' + item.price + ' coins' }}
+          </ion-button>
+          <ion-button size="small" fill="outline" class="bb-btn-outline" [disabled]="(busy$ | async) || pendingItemId() !== null" (click)="watchAd(item.id)">
+            <ion-icon name="play-circle" slot="start"></ion-icon>
+            {{ pendingItemId() === item.id && pendingMethod() === 'ad' ? 'Loading ad...' : 'Watch Ad to Unlock' }}
+          </ion-button>
+        }
+        </div>
+      </article>
+      }
       </div>
-    </div>
+    }
 
     <div class="bb-bottom-nav-spacer"></div>
   </div>

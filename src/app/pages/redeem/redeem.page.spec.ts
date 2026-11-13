@@ -1,3 +1,4 @@
+import { configurePageTestBed } from '../../../testing/page-test-providers';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { RedeemPage } from './redeem.page';
 
@@ -6,6 +7,7 @@ describe('RedeemPage', () => {
   let fixture: ComponentFixture<RedeemPage>;
 
   beforeEach(() => {
+    configurePageTestBed();
     fixture = TestBed.createComponent(RedeemPage);
     component = fixture.componentInstance;
     fixture.detectChanges();

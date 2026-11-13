@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, OnDestroy } from '@angular/core';
+import { Subscription } from 'rxjs';
 import { SettingsService } from './settings.service';
 import { BallTier } from '../config/economy.config';
 
@@ -12,7 +13,7 @@ import { BallTier } from '../config/economy.config';
  * and clarity while preventing digital distortion or clipping.
  */
 @Injectable({ providedIn: 'root' })
-export class AudioService {
+export class AudioService implements OnDestroy {
   private ctx: AudioContext | null = null;
   private compressor: DynamicsCompressorNode | null = null;
   private sfxGain: GainNode | null = null;
@@ -20,11 +21,24 @@ export class AudioService {
   private musicTimer: ReturnType<typeof setTimeout> | null = null;
   private musicStep = 0;
   private musicPlaying = false;
+  private musicRequested = false;
+  private musicPaused = false;
+  private readonly settingsSub: Subscription;
+  private activeVoices = 0;
+  private readonly noiseBuffers = new Map<number, AudioBuffer>();
 
   private readonly normalMusicVolume = 0.62;
-  private readonly duckedMusicVolume = 0.2;
+  constructor(private readonly settings: SettingsService) {
+    this.settingsSub = settings.view$.subscribe(() => this.syncMusic());
+    document.addEventListener('visibilitychange', this.onVisibilityChange);
+  }
 
-  constructor(private readonly settings: SettingsService) {}
+  private readonly onVisibilityChange = (): void => {
+    this.syncMusic();
+    if (!this.ctx) return;
+    if (document.hidden) void this.ctx.suspend().catch(() => undefined);
+    else void this.ctx.resume().catch(() => undefined);
+  };
 
   private ensureContext(): AudioContext {
     if (!this.ctx) {
@@ -70,7 +84,7 @@ export class AudioService {
     delay = 0,
     sweepTo?: number
   ): void {
-    if (!this.settings.current.soundEnabled) return;
+    if (document.hidden || !this.settings.current.soundEnabled || this.activeVoices >= 24) return;
     const ctx = this.ensureContext();
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -82,17 +96,27 @@ export class AudioService {
     gain.gain.exponentialRampToValueAtTime(gainValue, t0 + 0.01);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
     osc.connect(gain).connect(this.sfxGain!);
+    this.activeVoices++;
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+      this.activeVoices--;
+    };
     osc.start(t0);
     osc.stop(t0 + duration + 0.03);
   }
 
   private noiseBurst(duration: number, gainValue = 0.45, delay = 0): void {
-    if (!this.settings.current.soundEnabled) return;
+    if (document.hidden || !this.settings.current.soundEnabled || this.activeVoices >= 24) return;
     const ctx = this.ensureContext();
     const size = Math.max(1, Math.floor(ctx.sampleRate * duration));
-    const buffer = ctx.createBuffer(1, size, ctx.sampleRate);
-    const data = buffer.getChannelData(0);
-    for (let i = 0; i < size; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / size);
+    let buffer = this.noiseBuffers.get(size);
+    if (!buffer) {
+      buffer = ctx.createBuffer(1, size, ctx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < size; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / size);
+      this.noiseBuffers.set(size, buffer);
+    }
     const src = ctx.createBufferSource();
     src.buffer = buffer;
     const gain = ctx.createGain();
@@ -100,6 +124,12 @@ export class AudioService {
     gain.gain.setValueAtTime(gainValue, t0);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
     src.connect(gain).connect(this.sfxGain!);
+    this.activeVoices++;
+    src.onended = () => {
+      src.disconnect();
+      gain.disconnect();
+      this.activeVoices--;
+    };
     src.start(t0);
   }
 
@@ -180,10 +210,21 @@ export class AudioService {
   private readonly lead = [440, 554.37, 659.25, 554.37];
 
   startMusic(): void {
+    this.musicRequested = true;
+    this.musicPaused = false;
+    this.syncMusic();
+  }
+
+  private syncMusic(): void {
+    if (!this.musicRequested || this.musicPaused || !this.settings.current.musicEnabled || document.hidden) {
+      this.stopMusicLoop();
+      if (this.musicGain && this.ctx) this.musicGain.gain.setValueAtTime(0, this.ctx.currentTime);
+      return;
+    }
     if (this.musicPlaying) return;
     this.musicPlaying = true;
-    this.musicStep = 0;
     this.ensureContext();
+    this.musicGain!.gain.setValueAtTime(this.normalMusicVolume, this.ctx!.currentTime);
     const stepDuration = 0.22;
     const scheduleStep = () => {
       if (!this.musicPlaying) return;
@@ -201,21 +242,34 @@ export class AudioService {
   }
 
   stopMusic(): void {
+    this.musicRequested = false;
+    this.stopMusicLoop();
+  }
+
+  private stopMusicLoop(): void {
     this.musicPlaying = false;
     if (this.musicTimer) clearTimeout(this.musicTimer);
     this.musicTimer = null;
   }
 
   pauseMusic(): void {
-    if (this.musicGain && this.ctx) {
-      this.musicGain.gain.setValueAtTime(this.duckedMusicVolume, this.ctx.currentTime);
-    }
+    this.musicPaused = true;
+    this.syncMusic();
   }
 
   resumeMusic(): void {
-    if (this.musicGain && this.ctx) {
-      this.musicGain.gain.setValueAtTime(this.normalMusicVolume, this.ctx.currentTime);
-    }
+    this.musicRequested = true;
+    this.musicPaused = false;
+    this.syncMusic();
+  }
+
+  ngOnDestroy(): void {
+    this.stopMusic();
+    this.settingsSub.unsubscribe();
+    document.removeEventListener('visibilitychange', this.onVisibilityChange);
+    const ctx = this.ctx;
+    this.ctx = null;
+    if (ctx) void ctx.close().catch(() => undefined);
   }
 
   private musicTone(freq: number, duration: number, type: OscillatorType, gainValue: number, delay = 0): void {
@@ -229,6 +283,10 @@ export class AudioService {
     gain.gain.exponentialRampToValueAtTime(gainValue, t0 + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
     osc.connect(gain).connect(this.musicGain!);
+    osc.onended = () => {
+      osc.disconnect();
+      gain.disconnect();
+    };
     osc.start(t0);
     osc.stop(t0 + duration + 0.03);
   }

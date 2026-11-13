@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, map, take } from 'rxjs';
+import { BehaviorSubject, Observable, distinctUntilChanged, map, of, take } from 'rxjs';
 import { WalletRepositoryPort } from '../ports/wallet-repository.port';
 import { CoinTransaction, TransactionType, WalletSnapshot } from '../models/wallet.models';
 
@@ -36,6 +36,10 @@ function newId(): string {
 @Injectable({ providedIn: 'root' })
 export class LocalWalletRepository extends WalletRepositoryPort {
   private readonly state$ = new BehaviorSubject<WalletState>(this.load());
+  private readonly references = new Set(this.state$.value.transactions.map((tx) => tx.referenceId).filter(Boolean));
+  private snapshotState?: WalletState;
+  private snapshotDay = '';
+  private cachedSnapshot?: WalletSnapshot;
 
   private load(): WalletState {
     try {
@@ -49,20 +53,37 @@ export class LocalWalletRepository extends WalletRepositoryPort {
 
   private persist(next: WalletState): void {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+    if (next.transactions.length === 0) this.references.clear();
+    for (let i = this.state$.value.transactions.length; i < next.transactions.length; i++) {
+      const reference = next.transactions[i].referenceId;
+      if (reference) this.references.add(reference);
+    }
     this.state$.next(next);
   }
 
   private snapshot(state: WalletState): WalletSnapshot {
     const now = new Date();
-    const todayTx = state.transactions.filter((t) => isSameDay(new Date(t.createdAt), now));
-    const sumPositive = (txs: CoinTransaction[]) => txs.filter((t) => t.amount > 0).reduce((s, t) => s + t.amount, 0);
-    return {
+    const day = `${now.getFullYear()}-${now.getMonth()}-${now.getDate()}`;
+    if (this.snapshotState === state && this.snapshotDay === day && this.cachedSnapshot) return this.cachedSnapshot;
+    let todayEarned = 0;
+    let todayGameplayCoins = 0;
+    let todayAdRewards = 0;
+    for (const transaction of state.transactions) {
+      if (transaction.amount <= 0 || !isSameDay(new Date(transaction.createdAt), now)) continue;
+      todayEarned += transaction.amount;
+      if (transaction.type === 'GAME_REWARD') todayGameplayCoins += transaction.amount;
+      if (transaction.type === 'AD_REWARD') todayAdRewards++;
+    }
+    this.snapshotState = state;
+    this.snapshotDay = day;
+    this.cachedSnapshot = {
       availableCoins: state.balance,
       lifetimeEarned: state.lifetimeEarned,
-      todayEarned: sumPositive(todayTx),
-      todayGameplayCoins: sumPositive(todayTx.filter((t) => t.type === 'GAME_REWARD')),
-      todayAdRewards: todayTx.filter((t) => t.type === 'AD_REWARD' && t.amount > 0).length,
+      todayEarned,
+      todayGameplayCoins,
+      todayAdRewards,
     };
+    return this.cachedSnapshot;
   }
 
   private current(): WalletState {
@@ -70,7 +91,7 @@ export class LocalWalletRepository extends WalletRepositoryPort {
   }
 
   getWallet(): Observable<WalletSnapshot> {
-    return this.state$.pipe(map((s) => this.snapshot(s)));
+    return this.state$.pipe(map((s) => this.snapshot(s)), distinctUntilChanged());
   }
 
   getTransactions(limit = 100): Observable<CoinTransaction[]> {
@@ -80,7 +101,7 @@ export class LocalWalletRepository extends WalletRepositoryPort {
   }
 
   hasReference(referenceId: string): Observable<boolean> {
-    return this.state$.pipe(map((s) => s.transactions.some((t) => t.referenceId === referenceId)));
+    return this.state$.pipe(map(() => this.references.has(referenceId)), distinctUntilChanged());
   }
 
   getTodayGameplayCoins(): Observable<number> {
@@ -95,7 +116,7 @@ export class LocalWalletRepository extends WalletRepositoryPort {
     const state = this.current();
 
     // Idempotency guard (spec section 11): the same reference can never be credited twice.
-    if (state.transactions.some((t) => t.referenceId === params.referenceId)) {
+    if (this.references.has(params.referenceId)) {
       return this.getWallet().pipe(take(1));
     }
     if (params.amount <= 0) {
@@ -126,7 +147,7 @@ export class LocalWalletRepository extends WalletRepositoryPort {
 
   debit(params: { amount: number; type: TransactionType; source: string; referenceId: string }): Observable<WalletSnapshot> {
     const state = this.current();
-    if (state.transactions.some((t) => t.referenceId === params.referenceId)) {
+    if (this.references.has(params.referenceId)) {
       return this.getWallet().pipe(take(1));
     }
     if (params.amount <= 0) {
@@ -154,9 +175,6 @@ export class LocalWalletRepository extends WalletRepositoryPort {
 
   resetAll(): Observable<void> {
     this.persist(emptyState());
-    return new Observable((subscriber) => {
-      subscriber.next();
-      subscriber.complete();
-    });
+    return of(undefined);
   }
 }

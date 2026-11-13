@@ -1,10 +1,6 @@
-import { Component, signal } from '@angular/core';
+import { Component } from '@angular/core';
 import { Router } from '@angular/router';
-import { ToastController } from '@ionic/angular';
 import { WalletService } from '../../core/services/wallet.service';
-import { AdsService } from '../../core/services/ads.service';
-import { AudioService } from '../../core/services/audio.service';
-import { ECONOMY_CONFIG } from '../../core/config/economy.config';
 
 @Component({
   selector: 'app-wallet',
@@ -14,38 +10,12 @@ import { ECONOMY_CONFIG } from '../../core/config/economy.config';
 })
 export class WalletPage {
   readonly wallet$ = this.walletService.wallet$;
-  readonly adsRemaining$ = this.adsService.remainingToday$;
   readonly minRedemptionCoins = this.walletService.minRedemptionCoins;
-  readonly rewardedAdCoins = ECONOMY_CONFIG.rewardedAdCoins;
-  // A signal, not a plain field: this app runs zoneless, and the flip back
-  // to false happens inside an async RxJS callback (AdsService simulates
-  // ad-view latency), which zoneless change detection cannot see otherwise.
-  readonly watchingAd = signal(false);
 
   constructor(
     private readonly router: Router,
-    private readonly walletService: WalletService,
-    private readonly adsService: AdsService,
-    private readonly audioService: AudioService,
-    private readonly toastCtrl: ToastController
+    private readonly walletService: WalletService
   ) {}
-
-  watchAd(): void {
-    if (this.watchingAd()) return;
-    this.watchingAd.set(true);
-    this.adsService.watchAd().subscribe(async (result) => {
-      this.watchingAd.set(false);
-      if (result.granted) this.audioService.claimReward();
-      const message = result.granted ? `+${result.coins} coins credited!` : result.reason ?? 'Ad reward unavailable.';
-      const toast = await this.toastCtrl.create({
-        message,
-        duration: 1800,
-        color: result.granted ? 'success' : 'warning',
-        position: 'bottom',
-      });
-      await toast.present();
-    });
-  }
 
   goRedeem(): void {
     this.router.navigateByUrl('/redeem');

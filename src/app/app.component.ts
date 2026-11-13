@@ -1,4 +1,4 @@
-import { Component, HostListener, OnInit, effect } from '@angular/core';
+import { Component, HostListener, OnInit, effect, signal } from '@angular/core';
 import { NavigationEnd, Router } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { filter, map } from 'rxjs';
@@ -6,6 +6,7 @@ import { AudioService } from './core/services/audio.service';
 import { AdmobService } from './core/services/admob.service';
 import { AppVerificationService } from './core/services/app-verification.service';
 import { ConnectivityService } from './core/services/connectivity.service';
+import { BANNER_ROUTES } from './core/config/admob.config';
 
 const TAPPABLE_SELECTOR =
   'ion-button, button, ion-tab-button, ion-fab-button, .bb-bottom-nav-item, a[role="button"]';
@@ -19,12 +20,13 @@ const TAPPABLE_SELECTOR =
 export class AppComponent implements OnInit {
   private audioUnlocked = false;
 
-  private readonly isGameRoute = toSignal(
+  private readonly visible = signal(!document.hidden);
+  private readonly routePath = toSignal(
     this.router.events.pipe(
       filter((e): e is NavigationEnd => e instanceof NavigationEnd),
-      map((e) => e.urlAfterRedirects === '/game' || e.urlAfterRedirects.startsWith('/game/'))
+      map((e) => e.urlAfterRedirects.split(/[?#]/)[0])
     ),
-    { initialValue: this.router.url === '/game' || this.router.url.startsWith('/game/') }
+    { initialValue: this.router.url.split(/[?#]/)[0] }
   );
 
   constructor(
@@ -34,17 +36,14 @@ export class AppComponent implements OnInit {
     private readonly appVerification: AppVerificationService,
     readonly connectivity: ConnectivityService
   ) {
-    // Persistent banner on every screen except live gameplay, where it would
-    // eat into the cannon's drag area — and hidden outright while offline,
-    // since the banner is a native overlay the offline gate's router-outlet
-    // swap can't hide on its own.
+    // Banners are limited to the hub/profile; only visible ads reserve navigation space.
     effect(() => {
-      if (!this.connectivity.online()) {
+      if (!this.connectivity.online() || !this.visible() || this.admob.fullScreenAdActive()
+        || !BANNER_ROUTES.includes(this.routePath())) {
         void this.admob.hideBanner();
         return;
       }
-      if (this.isGameRoute()) void this.admob.hideBanner();
-      else void this.admob.showBanner();
+      void this.admob.showBanner();
     });
   }
 
@@ -55,6 +54,11 @@ export class AppComponent implements OnInit {
     // Earnivo so a pending reward (if any) gets credited. Harmless no-op
     // otherwise — see APP_PROMOTION_VERIFICATION_INTEGRATION.md.
     void this.appVerification.confirmAppPromotion();
+  }
+
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    this.visible.set(!document.hidden);
   }
 
   /**

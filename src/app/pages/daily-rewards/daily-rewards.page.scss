@@ -6,7 +6,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 6px;
+  margin-bottom: 20px;
 
   h1 {
     font-size: 20px;
@@ -33,12 +33,6 @@
 
 .dr-header-spacer {
   width: 32px;
-}
-
-.dr-subtitle {
-  color: var(--bb-text-dim);
-  font-size: 13px;
-  margin: 0 0 18px;
 }
 
 .dr-grid {
@@ -133,20 +127,4 @@
 
 .dr-claim-btn {
   height: 54px;
-}
-
-.dr-double-btn {
-  height: 48px;
-  margin-top: 10px;
-}
-
-.dr-doubled-note {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  margin-top: 12px;
-  font-size: 13px;
-  color: #22c55e;
-  font-weight: 600;
 }

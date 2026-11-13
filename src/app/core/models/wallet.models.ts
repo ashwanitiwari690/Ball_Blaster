@@ -28,5 +28,5 @@ export interface WalletSnapshot {
   lifetimeEarned: number;
   todayEarned: number;
   todayGameplayCoins: number; // counted against the daily gameplay cap
-  todayAdRewards: number; // counted against maxAdRewardsPerDay
+  todayAdRewards: number; // historical ad-coin transactions; no new ad coins are issued
 }

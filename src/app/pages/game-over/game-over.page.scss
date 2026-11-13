@@ -85,7 +85,7 @@
   }
 }
 
-.go-processing, .go-confirmed {
+.go-confirmed {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -94,10 +94,6 @@
   color: var(--bb-text-dim);
   margin-bottom: 18px;
 
-  ion-spinner {
-    width: 18px;
-    height: 18px;
-  }
 }
 
 .go-confirmed {
@@ -111,9 +107,4 @@
 .go-btn {
   height: 52px;
   margin-bottom: 10px;
-}
-
-.go-double-btn {
-  height: 48px;
-  margin-bottom: 14px;
 }

@@ -26,6 +26,10 @@
     </div>
 
 
+    @if (admob.privacyOptionsRequired()) {
+      <ion-button expand="block" fill="outline" class="bb-btn-outline" (click)="openAdPrivacy()">Ad privacy choices</ion-button>
+    }
+
     <div class="bb-section-title">About</div>
     <div class="bb-card st-row">
       <ion-icon name="information-circle-outline"></ion-icon>

@@ -1,7 +1,9 @@
 <ion-content class="bb-content" [fullscreen]="true">
-  <div class="cd-wrap" *ngIf="item as it">
+  @if (state$ | async; as state) {
+  @if (state.item; as it) {
+  <div class="cd-wrap">
     <div class="cd-header">
-      <button class="cd-back" (click)="goBack()" type="button">
+      <button class="cd-back" (click)="goBack()" type="button" aria-label="Back to shop">
         <ion-icon name="chevron-back"></ion-icon>
       </button>
       <h1>{{ it.name }}</h1>
@@ -15,30 +17,38 @@
     <h2 class="cd-name">{{ it.name }}</h2>
     <p class="cd-desc">{{ it.description }}</p>
 
-    <div class="bb-card cd-price-card" *ngIf="it.price > 0">
+    @if (it.price > 0) {
+    <div class="bb-card cd-price-card">
       <app-coin-icon [size]="22"></app-coin-icon>
       <span class="cd-price-value">{{ it.price | number }}</span>
     </div>
+    }
 
-    <ng-container *ngIf="state$ | async as state">
+      @if (!state.owned) {
       <ion-button
-        *ngIf="!state.owned"
         expand="block"
         class="bb-btn-primary cd-btn"
-        (click)="buyNow()"
+        [disabled]="(busy$ | async) || pending() !== null"
+        (click)="buyNow(it.id)"
       >
-        Buy Now
+        {{ pending() === 'coins' ? 'Buying...' : 'Buy · ' + it.price + ' coins' }}
       </ion-button>
+      <ion-button expand="block" fill="outline" class="bb-btn-outline cd-btn" [disabled]="(busy$ | async) || pending() !== null" (click)="watchAd(it.id)">
+        <ion-icon name="play-circle" slot="start"></ion-icon>
+        {{ pending() === 'ad' ? 'Loading ad...' : 'Watch Ad to Unlock' }}
+      </ion-button>
+      <p class="cd-desc">Unlock permanently with coins or one completed rewarded ad. Automatically equips after unlocking.</p>
+      } @else if (!state.equipped) {
       <ion-button
-        *ngIf="state.owned && !state.equipped"
         expand="block"
         class="bb-btn-primary cd-btn"
-        (click)="equip()"
+        [disabled]="(busy$ | async) || pending() !== null"
+        (click)="equip(it.id)"
       >
         Equip
       </ion-button>
+      } @else {
       <ion-button
-        *ngIf="state.owned && state.equipped"
         expand="block"
         fill="outline"
         class="bb-btn-outline cd-btn"
@@ -47,11 +57,13 @@
         <ion-icon name="checkmark" slot="start"></ion-icon>
         Equipped
       </ion-button>
-    </ng-container>
+      }
 
     <div class="bb-section-title">Preview</div>
     <div class="bb-card cd-preview-desc">
       {{ it.previewDescription }}
     </div>
   </div>
+  }
+  }
 </ion-content>

@@ -43,10 +43,6 @@ export const ECONOMY_CONFIG = {
   /** Ceiling on monetary coins earned from gameplay per day. */
   dailyGameplayCoinCap: 5000,
 
-  /** Coins awarded for a rewarded-ad view, and how many are allowed per day (section 32/33). */
-  rewardedAdCoins: 10,
-  maxAdRewardsPerDay: 5,
-
   /** 7-day login streak rewards, index 0 = Day 1 (section: Daily Rewards screen). */
   dailyLoginRewards: [2, 3, 5, 5, 10, 10, 20],
 
@@ -82,11 +78,4 @@ export const ECONOMY_CONFIG = {
 /** Balls that must be destroyed to complete the given level. */
 export function levelTarget(level: number): number {
   return ECONOMY_CONFIG.levelBallsBase + (level - 1) * ECONOMY_CONFIG.levelBallsStep;
-}
-
-/** Minimum total balls-destroyed needed to have plausibly completed this many levels — used to sanity-check a reported level count (spec section 23/24 pattern). */
-export function minBallsToCompleteLevels(levelsCompleted: number): number {
-  let total = 0;
-  for (let i = 1; i <= levelsCompleted; i++) total += levelTarget(i);
-  return total;
 }

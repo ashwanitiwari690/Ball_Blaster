@@ -18,10 +18,6 @@
         <span>Coins Earned</span>
         <strong class="go-coins">+{{ s.outcome.coinsEarned }}</strong>
       </div>
-      <div class="go-row" *ngIf="doubledCoins()">
-        <span>Ad Bonus (2x)</span>
-        <strong class="go-coins">+{{ s.outcome.coinsEarned }}</strong>
-      </div>
       <div class="go-divider"></div>
       <div class="go-row go-row-total">
         <span>Total Balance</span>
@@ -37,35 +33,16 @@
       </div>
     </div>
 
-    <div class="go-processing" *ngIf="processing()">
-      <ion-spinner name="dots"></ion-spinner>
-      Reward processing&hellip;
-    </div>
-    <div class="go-confirmed" *ngIf="!processing()">
+    <div class="go-confirmed">
       <ion-icon name="checkmark-circle"></ion-icon>
       Coins added to your wallet
     </div>
 
     <ion-button
-      *ngIf="!processing() && s.outcome.coinsEarned > 0 && !doubledCoins()"
-      expand="block"
-      fill="outline"
-      class="bb-btn-outline go-double-btn"
-      [disabled]="doublingCoins()"
-      (click)="doubleCoins()"
-    >
-      <ion-spinner name="dots" *ngIf="doublingCoins()"></ion-spinner>
-      <ng-container *ngIf="!doublingCoins()">
-        <ion-icon name="play-circle" slot="start"></ion-icon>
-        Watch Ad to 2x Coins Earned
-      </ng-container>
-    </ion-button>
-
-    <ion-button
       expand="block"
       class="bb-btn-primary go-btn"
       size="large"
-      [disabled]="processing() || navigating()"
+      [disabled]="navigating()"
       (click)="playAgain()"
     >
       PLAY AGAIN

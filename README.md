@@ -23,139 +23,87 @@ npx cap sync android
 npx cap open android   # opens Android Studio; needs Android SDK/Gradle installed
 ```
 
-## AdMob ads + offline gate
+## Application performance and cleanup
 
-Implemented per `ADMOB_AND_OFFLINE_GATE_GUIDE.md`, adapted to this app's
-actual installed plugin version (`@capacitor-community/admob@8.1.0` — its
-API differs slightly from the guide's, e.g. `showRewardVideoAd()` resolves
-with the earned reward item directly) and to running zoneless (see the
-section below — every new bit of ad-driven UI state uses a `signal()`).
+The application review covers all 12 routed pages and the shared services.
 
-**Where ads were added, and what format:**
+- Routes load on demand instead of preloading every page at startup. The
+  browser check confirms that opening Welcome does not download the game engine.
+- The AOT build uses `platformBrowser`; the unused
+  `@angular/platform-browser-dynamic` dependency was removed.
+- Only the 41 icons used by the pages and shop catalog are registered in
+  `shared/app-icons.ts`. The 1,357 copied SVG files (748,088 bytes) are no
+  longer included, and glyphs do not trigger individual network requests.
+- Unused Ionic utility styles were removed: the production global stylesheet
+  decreased from 46,488 to 23,870 bytes, about 49%. Bundled icons increase
+  initial JavaScript from about 612 to 645 kB; that is a deliberate tradeoff
+  for fewer asset files and requests, rather than an overall initial-bundle
+  size reduction.
+- Wallet snapshots are cached per state and local day, daily totals use a
+  single ledger pass, and duplicate references use a set. Profile updates
+  persist once per completed run.
+- Background music stops scheduling when disabled, paused, or hidden. Audio
+  contexts and connectivity listeners are released on service destruction.
+- Game Over displays already-completed rewards immediately and reloads the
+  result on every Ionic page entry. Rewarded cosmetics use one acquisition lock.
+- Removed unused module imports, game HUD callbacks, shop compatibility
+  helpers, an unused starter SVG, and obsolete CSS. TypeScript now rejects
+  unused local declarations and parameters.
 
-| Location | Format | Why |
+Run the full suite and production build with:
+
+```bash
+npm test -- --watch=false
+npm run build
+npx cap copy android
+```
+
+The browser checks cover every page, visible icons, shop purchases and saved
+equipment, and repeated game-over/replay transitions. Device frame rates,
+native ad playback, and real redemption responses still require device/backend
+verification; the browser checks do not submit real redemption requests.
+
+## AdMob ads and serving-limit remediation
+
+See [ADMOB_REMEDIATION.md](ADMOB_REMEDIATION.md) for the deployment and account
+steps. Google controls the serving limit; changing code does not remove it.
+
+| Placement | Format | Current behavior |
 |---|---|---|
-| Wallet → "Watch Ad for +5 Coins" | Rewarded | Direct coin-earning placement, capped `maxAdRewardsPerDay`/day |
-| Game Over → "Watch Ad to 2x Coins Earned" | Rewarded | Doubles *this run's* coins, once per session |
-| Daily Rewards → "Watch Ad to Double" (after claiming) | Rewarded | Doubles today's already-claimed login reward, once per day |
-| Game → "OUT OF LIVES — Watch Ad to Continue" | Rewarded | One extra life per run, offered exactly once when lives hit 0 |
-| Shop / Cannon Details → tapping an item you can't afford | Rewarded | "Watch Ad for Coins" button inside the insufficient-funds toast — reuses the same capped Wallet ad, not a new uncapped channel |
-| Game Over → tapping Play Again / Home | Interstitial | Frequency-capped (`INTERSTITIAL_EVERY_N_ROUNDS`, currently every 2 runs) so it doesn't fire after every single game |
-| Home → "PLAY NOW" | Interstitial | Shown at the Home→Game breakpoint, every tap (not frequency-capped — this transition doesn't repeat rapidly the way the Game Over replay loop does, since "Play Again" from Game Over skips Home entirely) |
-| Every screen except live gameplay | Banner | Persistent, bottom-anchored (`AdmobService.showBanner()`/`hideBanner()`, toggled by `AppComponent` on route change); hidden on the Game page so it never overlaps the cannon's drag area, and hidden outright while offline |
+| Home and Profile | Banner | Fixed 320x50 banner; 82px spacing (including a 32px navigation gap) only while the banner is loaded and visible |
+| Game Over navigation | Interstitial | Ready ads only, after three unique completed rounds and a 120-second cooldown; never waits for an ad load |
+| Shop and Item Details | Rewarded | Explicit opt-in for a permanent cosmetic unlock only |
 
-Deliberately **not** added: an ad gate on daily login claim, shop browsing, or
-between every navigation — the goal was real, opt-in engagement points, not
-an ad on every tap.
+Wallet coin ads, run-coin doubling, daily-coin doubling, and ad continuation
+in redeemable runs have been removed. Existing balances and purchases are
+preserved. Cosmetic rewards cannot be redeemed, transferred, or exchanged
+back into coins. Gameplay and the normal daily claim do not require an ad.
 
-**Banner ad, and how content avoids it.** `AppComponent`'s constructor runs an
-`effect()` that calls `admob.showBanner()`/`hideBanner()` whenever the current
-route or `ConnectivityService.online()` changes — shown everywhere except the
-Game page, hidden while offline (the banner is a native overlay, so the
-offline gate's router-outlet swap can't hide it on its own). The banner's
-*actual* rendered height comes back live via the plugin's `SizeChanged` event
-and is written to a `--ad-banner-space` CSS custom property
-(`AdmobService.setBannerSpace()`), which `.bb-bottom-nav`'s `bottom` offset
-and `.bb-bottom-nav-spacer`'s height both read — so the bottom nav and the
-scrollable content beneath it shift up to make room instead of getting
-covered, without either hardcoding a fixed banner height.
+The service gates requests on UMP's `canRequestAds`, foreground state and
+connectivity, serializes ad operations, and does not request any format more
+often than once per minute. A failed request backs off for five minutes;
+there are no automatic retry loops, automatic full-screen preloads at app
+launch, or production-to-test-ad fallback. A ready interstitial can only be
+shown at Game Over; late loads cannot open on the next screen. Full-screen
+ads have an application session limit and rewarded ads have a cooldown.
+These are application safeguards, not a guarantee of Google approval.
 
-**How rewarded coins/rewards are handled:**
+Development builds use Google's demo unit IDs. Production uses the configured
+publisher units. Web builds do not simulate successful ads or award fake
+rewards. Native rewards require the SDK's earned-reward callback and ad
+dismissal. Only `ShopService` consumes rewarded ads, and it never credits the
+wallet. Settings exposes Ad privacy choices when UMP requires that entry.
 
-`AdmobService.showRewarded()` (`core/services/admob.service.ts`) is the only
-method in the app allowed to resolve a rewarded ad as watched. It resolves
-`true` **only** when the ad SDK actually reports the reward was earned —
-never on the button tap, the ad merely starting, or a dismiss before
-completion — and it serializes itself (a `rewardedShowing` guard), so no two
-rewarded placements anywhere in the app can show or resolve at once, and a
-double-tap can't double-trigger anything. Every caller (`AdsService` for
-Wallet/Shop coins, `GameOverPage` for double-coins, `DailyRewardsService`/
-`DailyRewardsPage` for the daily double, `GamePage` for the continue) then
-does its **own** idempotent credit through `WalletRepositoryPort`, each with
-a unique, event-scoped `referenceId` (e.g. `ad-double-${sessionId}`,
-`daily-double-${today}`) — so even if a credit call somehow ran twice, the
-ledger's own duplicate-reference guard (spec section 11) stops it being
-granted twice. Coin *amounts* always come from `ECONOMY_CONFIG`
-(`rewardedAdCoins`, or the run's/day's own already-computed coin total for
-the "double" placements) — the AdMob layer never hardcodes a coin value or
-an INR conversion, per the brief.
+`src/app/core/config/admob.config.ts` contains IDs, pacing, banner routes,
+and a local `ADS_ENABLED` kill switch. `scripts/setup-admob-android.js` sets
+up the native App ID when Android is regenerated. Register QA devices as
+test devices before testing production-looking builds; never click live ads
+on your own devices.
 
-On the web (during this dev session — AdMob never runs outside a native
-build), `showRewarded()` resolves via a 1.5s simulated delay instead of
-failing outright, purely so every placement above stayed testable from a
-browser. That path is unreachable in a real native build
-(`Capacitor.isNativePlatform()` gates it).
-
-**Where the test IDs are configured:** `src/app/core/config/admob.config.ts`
-(`AD_UNIT_IDS.banner` / `.interstitial` / `.rewarded`) — all three are
-Google's official public test ad unit IDs. The native AdMob **App ID** is
-separate and lives in `android/app/src/main/res/values/strings.xml`
-(`admob_app_id`), currently set to Google's public **test** App ID
-(`ca-app-pub-3940256099942544~3347511713`), referenced from
-`AndroidManifest.xml`.
-
-**`android/` isn't committed to git** (see `.gitignore`), so `cap add android`
-regenerates it from a blank template — wiping the hand-edited `admob_app_id`
-string and manifest meta-data above. `npm run android:add` (`cap add android
-&& node scripts/setup-admob-android.js`) re-applies both automatically after
-a fresh add; running `scripts/setup-admob-android.js` again on an
-already-configured `android/` is a safe no-op (it checks before writing).
-
-**Switching to production IDs:**
-1. In the AdMob console, add this app and create real ad units for banner,
-   interstitial, and rewarded.
-2. Replace the three values in `admob.config.ts` with those ad unit IDs.
-3. Replace `admob_app_id` in `strings.xml` with the app's real App ID from
-   the same console listing, and update `AndroidManifest.xml`'s reference
-   only if you rename the string.
-4. Remove `initializeForTesting: true` from the `AdMob.initialize(...)` call
-   in `AdmobService.initialize()`.
-5. Add a GDPR/UMP consent flow before requesting ads if the app will have
-   EU/UK users — not implemented here, required before a public launch there.
-6. `npx cap sync android` and rebuild.
-
-Nothing else needs to change — every page reads ad unit IDs through
-`admob.config.ts` and shows/credits ads only through `AdmobService`/
-`AdsService`, never by calling the plugin directly.
-
-**What I could verify vs. couldn't, in this environment:** this sandbox has
-no Java/Gradle/Android SDK and no device or emulator, so I could not build
-or run an actual APK to visually confirm a test ad renders on-device. What
-*is* done and verified: the native Android platform is scaffolded
-(`npx cap add android`), the plugin is registered and synced
-(`npx cap sync android` succeeds and lists `@capacitor-community/admob`),
-the manifest/strings changes are in place, the plugin's real installed API
-surface was read directly from its `.d.ts` files (not assumed from the
-guide) to make sure every call matches, and every ad-gated flow's
-*application logic* (idempotent crediting, re-entrancy guards, UI state
-transitions, the offline gate) was verified end-to-end in a real browser
-with Playwright. **Before shipping, actually build and run this on a device
-or emulator** to confirm the native ad views themselves render — that step
-needs a real Android toolchain this session didn't have access to.
-
-### Offline gate
-
-`ConnectivityService` (`core/services/connectivity.service.ts`) tracks
-`navigator.onLine` plus the `online`/`offline` window events, exposed as a
-signal. `AppComponent` swaps the entire `<ion-router-outlet>` for a
-full-screen "NO INTERNET CONNECTION" card whenever it's false — gameplay
-(and everything else) is blocked outright rather than letting anything run
-that was never going to be backed by an actual ad request. Reconnecting
-restores the same route automatically; "TRY AGAIN" is a manual fallback for
-the rare case a resume-from-background doesn't fire a fresh browser event.
-The offline card's icon is a hand-drawn inline SVG rather than `ion-icon` —
-`ion-icon` fetches its glyph over the network, which doesn't work on the one
-screen whose entire point is that there isn't any.
-
-### A zoneless note specific to the ad work
-
-Every new ad-driven loading/result state (`WalletPage.watchingAd`,
-`GameOverPage.doublingCoins`/`doubledCoins`, `DailyRewardsPage.doubling`,
-`GamePage.showContinuePrompt`/`continueAdLoading`/`continueSecondsLeft`,
-`ConnectivityService.online`) is a `signal()`, not a plain field, for the
-same reason described below: it changes from inside an `await
-admobService.showRewarded()` continuation, which this app's zoneless change
-detection cannot see on its own.
+The native request/lifecycle tests use an injected mock SDK and create no
+live ad traffic. Real-device validation must use test inventory. Consent,
+no-fill responses, and a serving limit must not block ordinary app use.
+The existing offline screen still blocks play when the device is offline.
 
 ## What "frontend-only" means here
 
@@ -195,7 +143,6 @@ src/app/core/
     game-reward.service.ts     <- mirrors POST /game/session/start|complete
     redemption.service.ts      <- validates a mobile number + calls the real reward API
     reward-api.service.ts      <- HttpClient wrapper for the real Earnivo redeem endpoint
-    ads.service.ts             <- mirrors a rewarded-ad reward endpoint
     daily-rewards.service.ts   <- 7-day login streak
     shop.service.ts            <- cosmetic purchases (spends reward coins)
     player-profile.service.ts
@@ -216,7 +163,7 @@ today; **redemption already went through this exact swap** — see
 
 Same story for `economy.config.ts`: today it's a static object; in
 production every value in it (`ballTiers`, `dailyGameplayCoinCap`,
-`minRedemptionCoins`, `rewardedAdCoins`, ...) should come from a
+`minRedemptionCoins`, ...) should come from a
 `GET /config/economy` call instead, exactly as the spec's "admin config"
 requirements describe. Note there is deliberately no coin-to-INR conversion
 rate configured anywhere on the client — that number is computed
@@ -225,43 +172,96 @@ server-side by the real redemption API, never locally.
 ## Gameplay
 
 `BallBlasterEngine` (`core/game-engine/ball-blaster-engine.ts`) is a
-dependency-free Canvas 2D game loop:
+Canvas 2D loop that runs independently of Angular:
 
-- Cannon auto-fires upward continuously; drag/touch moves it horizontally.
-- Balls fall from the top with a tier (`normal` / `fast` / `heavy` / `gold`
-  / `boss`), each with its own color, speed, HP, and coin value, all defined
-  in `economy.config.ts`.
-- Heavy/boss balls split into two smaller balls on destruction.
-- A rare "x2" power orb grants a temporary score/coin multiplier.
-- 3 lives; a ball reaching the bottom uncaught costs one life.
-- **Levels**: a single run advances through levels rather than staying one
-  flat difficulty. Level *N* completes once `10 + (N-1) * 5` balls have been
-  destroyed in it (`levelTarget()` in `economy.config.ts`); each completed
-  level pays a flat +10 coin bonus and nudges spawn rate/tier mix harder
-  (`pickWeightedTier()` / the spawn-interval math in `updateSpawning()`).
-  The current level and a "LEVEL N" banner are shown live during play.
-- **Level progress persists across runs.** `PlayerProfileService` tracks
-  `highestLevel` — the furthest level ever reached, across every run, on
-  this device — in `bb.profile.v1`. A brand-new game always starts at that
-  saved level (`GamePage.ngAfterViewInit()` reads it and passes it to the
-  engine's `startLevel` constructor param) instead of always resetting to
-  level 1, and it's raised (never lowered) via
-  `PlayerProfileService.recordLevelReached()` whenever a run ends — whether
-  by losing all lives or by Quit & Cash Out — at whatever level was reached,
-  even if no *new* level completed that run. Settings → "Reset Level" (Danger
-  Zone) is the only thing that puts it back to 1, and it does not touch the
-  coin balance.
-- The engine never touches the network or the wallet. It reports a plain
-  result object (`EngineResult`) to `GamePage`, which hands it to
-  `GameRewardService`.
+- The cannon auto-fires every 120 ms. Drag to aim, or use the arrow / A D keys.
+- Each run starts at level 1. The profile keeps the highest level reached.
+- Normal, fast and gold balls appear from level 1; heavy balls unlock at
+  level 2 and bosses at level 3. Each tier has its own HP, speed and coin
+  value in `economy.config.ts`.
+- Heavy and boss balls split into two smaller, 3-HP normal balls. Children
+  appear far enough above the loss line to leave time to react, and their
+  falling speed follows the current level.
+- Shooting an x2 orb grants dual bullets and doubles score / ball coins
+  for the configured 10 seconds. The HUD shows the remaining seconds.
+- Clearing balls within 3.5 seconds of one another builds a streak. Every
+  third clear increases the score factor, up to x5. Streaks reset on a miss
+  or timeout; they do not increase coin rewards.
+- A level requires `10 + (level - 1) * 5` clears and awards the configured
+  10-coin completion bonus. The HUD shows the current level.
+  Each level gradually increases falling/drifting speed, ball health, spawn
+  frequency, and the chance of tougher tiers. The curve in
+  `core/game-engine/level-difficulty.ts` approaches limits of 700 ms between
+  spawns, 1.75x speed, and 1.4x health; it keeps increasing beyond level 10.
+  New settings apply to newly spawned balls, leaving existing balls unchanged.
+- A ball reaching the loss boundary above the cannon costs a life. A 1.8-second recovery
+  window prevents a group of misses from taking all three lives at once.
+- Redeemable gameplay runs end when lives run out; they have no rewarded-ad continuation.
+- Pause stops animation frames. Switching apps / tabs pauses the game;
+  returning requires Resume. Leaving the game destroys its loop and input
+  listeners. Re-entering creates a new engine and session.
 
-**Anti-cheat pattern preserved even without a server:** `GameRewardService`
-does *not* trust a `coinsEarned` total from the engine. It recomputes the
-reward strictly from `destroyedByTier` counts × the configured coin value
-per tier, runs a plausibility check (balls-destroyed-per-second vs. run
-duration), and enforces the daily gameplay coin cap — the same shape of
-validation a real `POST /game/session/complete` handler would perform
-server-side.
+The engine reports an `EngineResult` to `GamePage`, which completes the
+session through `GameRewardService`. The current reward service is a local
+prototype that accepts the run coin total and applies the daily cap.
+
+### Rendering and timing
+
+Frame timing uses actual elapsed time, with physics steps at most 16.67 ms.
+There is no minimum frame duration, so high-refresh displays do not speed
+up the game. Catch-up after a stall is capped at 100 ms. Swept collisions
+select the first ball along a bullet's path, and hits are resolved before
+checking for missed balls.
+
+Ball gradients and the star background are cached. Canvas density is
+capped at 1.5 and 1.5 million pixels. Bullets, particles and floating labels
+reuse objects; live work is bounded at 28 balls, 80 bullets, 40 particles
+and six labels. The boost HUD updates once per second, and audio noise
+buffers are cached with completed audio nodes disconnected.
+
+Focused regression checks:
+
+```bash
+npm test -- --watch=false --include=src/app/core/game-engine/ball-blaster-engine.spec.ts --include=src/app/pages/game/game.page.spec.ts
+npm run build
+npx cap copy android
+```
+
+The focused checks cover 30/60/90/120/144-Hz timing, collisions,
+recovery, continues, page lifecycle, object bounds and a two-minute
+simulation. Chrome checks also cover touch input, pause/resume and viewport
+rotation. Native device frame rates and production ad behavior still need
+verification on an Android device.
+
+## Shop and equipped items
+
+Every paid item offers **Buy with coins** and **Watch Ad to Unlock** in the
+shop and its details page. One earned rewarded ad grants that item permanently.
+Coin purchases debit the listed price once. A successful unlock automatically
+equips the item; owned items can be equipped again at no cost. Closing an ad
+early or failing to load an ad never unlocks an item.
+
+The categories apply independently during gameplay:
+
+- Cannons change the cannon finish and matching shot color.
+- Shot Colors override the shot color: Ruby Red / Emerald Green cost 100
+  coins, Cosmic Violet / Sunshine Gold cost 150. Cannon Match restores the
+  equipped cannon's shot color.
+- Balls apply neon outlines or galaxy details to the falling targets.
+- Effects enable longer bullet trails or larger, bounded explosion bursts.
+- Themes change the cached background and star palette.
+
+Each category includes a free default. Purchases and equipped choices persist
+across app reloads, and previous cannon ownership and selection migrate
+automatically. Equipment is cosmetic: damage, fire rate and coin rewards
+keep their existing values. Native ads use the existing AdMob rewarded flow;
+web builds do not simulate ad success.
+
+Purchase and equipment regression checks:
+
+```bash
+npm test -- --watch=false --include=src/app/core/services/shop.service.spec.ts --include=src/app/core/game-engine/ball-blaster-engine.spec.ts --include=src/app/pages/game/game.page.spec.ts --include=src/app/pages/shop/shop.page.spec.ts --include=src/app/pages/cannon-details/cannon-details.page.spec.ts
+```
 
 ## Coin economy (current defaults, see `economy.config.ts`)
 
@@ -464,18 +464,18 @@ pattern. Fields set synchronously inside a template event handler
 - Server-style reward recalculation, daily cap enforcement, and idempotent
   crediting via `GameRewardService`.
 - A deliberately minimal Wallet page: just the coin balance the player owns,
-  a Watch Ad card, and (once the balance reaches `minRedemptionCoins`) a
+  and (once the balance reaches `minRedemptionCoins`) a
   Redeem button — no transaction history, no stat breakdown, no coin-to-INR
   estimate. See "Wallet & redemption — kept intentionally minimal" below for
   why, and what's still tracked internally vs. only ever shown.
 - Daily login rewards with streak tracking and idempotent one-claim-per-day.
-- Real AdMob integration (test ad unit IDs) — a persistent banner, interstitial,
-  and 5 rewarded-ad placements. See "AdMob ads + offline gate" below for the
-  full breakdown.
+- AdMob integration with limited banner placements, paced interstitials,
+  and opt-in cosmetic rewards. See the AdMob section and remediation guide.
 - An offline gate that blocks the whole app behind a "no internet
   connection" screen, since ad revenue funds the coin economy.
-- Shop purchases (cannon skins, ball skins, effects, themes) that spend
-  reward coins and persist ownership + equipped cannon.
+- Shop purchases (cannons, shot colors, ball skins, effects, themes) using
+  reward coins or completed rewarded ads, with saved ownership and an
+  independent equipped selection for every category.
 - Redemption request flow: once the balance is ≥ `minRedemptionCoins`,
   validates a 10-digit payout mobile number and submits it to the real
   Earnivo Central Game Reward API — see "Redemption — real API integration"

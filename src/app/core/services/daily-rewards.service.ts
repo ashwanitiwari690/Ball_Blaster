@@ -1,5 +1,5 @@
 import { Injectable } from '@angular/core';
-import { BehaviorSubject, Observable, combineLatest, map } from 'rxjs';
+import { BehaviorSubject, Observable, map } from 'rxjs';
 import { WalletRepositoryPort } from '../ports/wallet-repository.port';
 import { ECONOMY_CONFIG } from '../config/economy.config';
 
@@ -15,10 +15,7 @@ export interface DailyRewardsView {
   claimedToday: boolean;
   rewards: readonly number[];
   claimedDays: boolean[]; // index 0 = Day 1
-  /** Coins the current streak day is worth — what a "double" ad bonus would add again. */
-  todayRewardCoins: number;
-  /** Whether the ad-doubled bonus for today's claim has already been granted. */
-  doubledToday: boolean;
+
 }
 
 function todayKey(): string {
@@ -57,14 +54,10 @@ export class DailyRewardsService {
     this.state$.next(next);
   }
 
-  private doubleReferenceId(day: string): string {
-    return `daily-double-${day}`;
-  }
-
   get view$(): Observable<DailyRewardsView> {
     const today = todayKey();
-    return combineLatest([this.state$, this.wallet.hasReference(this.doubleReferenceId(today))]).pipe(
-      map(([s, doubledToday]) => {
+    return this.state$.pipe(
+      map((s) => {
         const claimedToday = s.lastClaimedDate === today;
         const currentDay = s.streakDay === 0 ? 1 : s.streakDay;
         // A day is "claimed" once it's before the current streak day, or it IS
@@ -75,8 +68,6 @@ export class DailyRewardsService {
           claimedToday,
           rewards: ECONOMY_CONFIG.dailyLoginRewards,
           claimedDays,
-          todayRewardCoins: ECONOMY_CONFIG.dailyLoginRewards[currentDay - 1],
-          doubledToday,
         };
       })
     );
@@ -99,20 +90,4 @@ export class DailyRewardsService {
       .pipe(map(() => ({ day: nextDay, coins })));
   }
 
-  /**
-   * Grants a second copy of today's already-claimed reward as an ad bonus.
-   * Idempotent per day via the ledger's own referenceId guard, so calling
-   * this twice (e.g. a re-tapped button) can never double-credit.
-   */
-  doubleToday(): Observable<{ coins: number }> {
-    const state = this.state$.value;
-    const today = todayKey();
-    if (state.lastClaimedDate !== today) {
-      throw new Error("Claim today's reward first.");
-    }
-    const coins = ECONOMY_CONFIG.dailyLoginRewards[(state.streakDay || 1) - 1];
-    return this.wallet
-      .credit({ amount: coins, type: 'DAILY_REWARD', source: 'daily-login-ad-double', referenceId: this.doubleReferenceId(today) })
-      .pipe(map(() => ({ coins })));
-  }
 }

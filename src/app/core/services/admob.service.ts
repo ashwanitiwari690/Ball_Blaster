@@ -1,643 +1,383 @@
-import { Injectable, signal } from '@angular/core';
+import { Inject, Injectable, InjectionToken, OnDestroy, signal } from '@angular/core';
 import { Capacitor, PluginListenerHandle } from '@capacitor/core';
 import {
-  AdMob,
-  AdmobConsentStatus,
-  AdMobError,
-  AdMobRewardItem,
-  BannerAdOptions,
-  BannerAdPluginEvents,
-  BannerAdPosition,
-  BannerAdSize,
-  InterstitialAdPluginEvents,
+  AdMob, AdMobPlugin, AdmobConsentInfo, AdmobConsentStatus, BannerAdPluginEvents,
+  BannerAdPosition, BannerAdSize, InterstitialAdPluginEvents,
   RewardAdPluginEvents,
 } from '@capacitor-community/admob';
 import {
-  AD_UNIT_IDS,
-  IS_TESTING_ADS,
-  INTERSTITIAL_EVERY_N_ROUNDS,
-  INTERSTITIAL_MIN_INTERVAL_MS,
-  INTERSTITIAL_TIMEOUT_MS,
+  ADS_ENABLED, AD_UNIT_IDS, IS_TESTING_ADS, TEST_DEVICE_IDS, AD_REQUEST_INTERVAL_MS,
+  AD_FAILURE_BACKOFF_MS, AD_CACHE_LIFETIME_MS, BANNER_HEIGHT_PX, BANNER_CONTROL_GAP_PX,
+  INTERSTITIAL_EVERY_N_ROUNDS, INTERSTITIAL_MIN_INTERVAL_MS, FULLSCREEN_SESSION_LIMIT,
+  REWARDED_MIN_INTERVAL_MS, REWARDED_LOAD_TIMEOUT_MS,
 } from '../config/admob.config';
 
-export type RewardFailureReason = 'not_ready' | 'dismissed_early' | 'failed_to_show' | 'busy' | 'unsupported';
+// Keep the Capacitor proxy inside a plain handle so Angular doesn't probe it for ngOnDestroy.
+export const ADMOB_SDK = new InjectionToken<{ plugin: AdMobPlugin }>('AdMob SDK', {
+  providedIn: 'root', factory: () => ({ plugin: AdMob }),
+});
+export type RewardFailureReason = 'not_ready' | 'dismissed_early' | 'failed_to_show' | 'busy'
+  | 'unsupported' | 'consent' | 'cooldown' | 'session_limit' | 'unsupported_reward';
 
-/**
- * Production-grade AdMob service following the architectural pattern from Escape the Monster:
- * 1. Google UMP Consent Management Platform (GDPR / UK / CPRA) integration.
- * 2. Banner lifecycle with singleton listener deduplication, resume/hide, and bounded backoff retry.
- * 3. Policy-safe Interstitial pacing (every N rounds + cooldown interval) with dismissal tracking.
- * 4. Decoupled Rewarded ad lifecycle: reward verification is separated from dismissal callbacks,
- *    ensuring rewards are strictly earned and never denied or granted prematurely.
- * 5. Automatic test inventory fallback: during testing/review, if new production ad units return
- *    ERROR_CODE_NO_FILL before AdMob approval, seamlessly falls back to test inventory so ads always
- *    display and game reward actions always execute.
- * 6. Concurrency locks preventing double-tap triggers and overlapping ad displays.
- * 7. Dynamic CSS safe-area spacing (--ad-banner-space) to avoid overlapping gameplay controls or navigation.
- */
+/** One request per format at a time. No automatic retries, refreshes, or production test fallback. */
 @Injectable({ providedIn: 'root' })
-export class AdmobService {
+export class AdmobService implements OnDestroy {
   readonly isSupported = Capacitor.isNativePlatform();
-
-  /** True while a rewarded ad is loading or being presented across the app. */
   readonly rewardedBusy = signal(false);
-
-  /** True while ANY full-screen ad (interstitial or rewarded) is covering the screen. */
   readonly fullScreenAdActive = signal(false);
-
-  /** True when the bottom banner has successfully loaded and rendered. */
   readonly bannerLoaded = signal(false);
-
-  /** Diagnostic failure reason for the most recent rewarded ad request. */
+  readonly privacyOptionsRequired = signal(false);
   lastRewardFailureReason?: RewardFailureReason;
 
+  private disposed = false;
+  private sdkInitialized = false;
+  private consentAllowsAds = false;
   private initPromise?: Promise<void>;
-
-  // Banner state
+  private initRetryAt = 0;
+  private bannerDesired = false;
   private bannerCreated = false;
   private bannerVisible = false;
-  private bannerDesired = false;
+  private bannerTask: Promise<void> = Promise.resolve();
+  private bannerNextRequestAt = 0;
   private bannerListenersRegistered = false;
-  private bannerRetryTimer?: ReturnType<typeof setTimeout>;
-  private bannerRetryAttempts = 0;
-  private readonly MAX_BANNER_RETRIES = 3;
-  private lastKnownBannerHeight = 50;
+  private readonly bannerHandles: PluginListenerHandle[] = [];
+  private interstitialLoadedAt: number | null = null;
+  private rewardedLoadedAt: number | null = null;
+  private interstitialNextRequestAt = 0;
+  private rewardedNextRequestAt = 0;
+  private interstitialLoad?: Promise<boolean>;
+  private rewardedLoad?: Promise<boolean>;
+  private completedRounds = 0;
+  private readonly recordedRounds = new Set<string>();
+  private readonly startedAt = Date.now();
+  private lastFullScreenAt: number | null = null;
+  private fullScreenCount = 0;
+  private cancelFullScreen?: () => void;
 
-  // Interstitial state
-  private interstitialReady = false;
-  private interstitialLoading = false;
-  private interstitialBusy = false;
-  private interstitialLoadPromise?: Promise<boolean>;
-  private interstitialRetryTimer?: ReturnType<typeof setTimeout>;
-  private interstitialRetryAttempts = 0;
-  private readonly MAX_INTERSTITIAL_RETRIES = 3;
-  private roundsSinceInterstitial = 0;
-  private lastFullScreenAdTime = 0;
+  private readonly sdk: AdMobPlugin;
+  constructor(@Inject(ADMOB_SDK) handle: { plugin: AdMobPlugin }) { this.sdk = handle.plugin; }
 
-  // Rewarded state
-  private rewardedReady = false;
-  private rewardedLoading = false;
-  private rewardedLoadPromise?: Promise<boolean>;
-  private rewardedRetryTimer?: ReturnType<typeof setTimeout>;
-  private rewardedRetryAttempts = 0;
-  private readonly MAX_REWARDED_RETRIES = 3;
+  private foreground(): boolean {
+    return !this.disposed && ADS_ENABLED && this.isSupported && !document.hidden && navigator.onLine;
+  }
 
-  /**
-   * Initializes Google Mobile Ads SDK and requests UMP consent if applicable.
-   * Safe to call repeatedly; returns the memoized init promise.
-   */
   initialize(): Promise<void> {
-    if (!this.isSupported) return Promise.resolve();
-    if (!this.initPromise) {
-      this.initPromise = (async () => {
-        // Step 1: User Messaging Platform (UMP) Consent
-        try {
-          console.log('[AdMob] Checking UMP consent info...');
-          const consentInfo = await AdMob.requestConsentInfo();
-          if (
-            consentInfo?.status === AdmobConsentStatus.REQUIRED &&
-            consentInfo?.isConsentFormAvailable
-          ) {
-            console.log('[AdMob] Presenting UMP consent form...');
-            await AdMob.showConsentForm();
-          }
-        } catch (consentErr) {
-          console.warn('[AdMob] UMP consent bypassed or unavailable:', consentErr);
+    if (!this.foreground() || Date.now() < this.initRetryAt) return Promise.resolve();
+    if (this.initPromise) return this.initPromise;
+    this.initPromise = (async () => {
+      try {
+        let info = await this.sdk.requestConsentInfo();
+        if (!this.foreground()) return;
+        if (info.status === AdmobConsentStatus.REQUIRED && info.isConsentFormAvailable) {
+          info = await this.sdk.showConsentForm();
         }
-
-        // Step 2: Initialize Mobile Ads SDK
-        try {
-          console.log('[AdMob] Initializing Google Mobile Ads SDK...');
-          await AdMob.initialize({});
-          console.log('[AdMob] Mobile Ads SDK initialized successfully.');
-        } catch (initErr) {
-          console.error('[AdMob] Mobile Ads SDK initialization error:', initErr);
+        this.applyConsent(info);
+        if (!this.consentAllowsAds || !this.foreground()) return;
+        if (!this.sdkInitialized) {
+          await this.sdk.initialize({ initializeForTesting: IS_TESTING_ADS, testingDevices: TEST_DEVICE_IDS });
+          this.sdkInitialized = true;
         }
-
-        // Step 3: Register singleton banner listeners
-        await this.registerBannerListeners();
-
-        // Step 4: Preload initial full-screen ad units in background
-        void this.preloadInterstitial();
-        void this.preloadRewarded();
-      })();
-    }
+      } catch {
+        this.consentAllowsAds = false;
+        this.initRetryAt = Date.now() + AD_FAILURE_BACKOFF_MS;
+      }
+    })().finally(() => {
+      if (!this.consentAllowsAds || !this.sdkInitialized) this.initPromise = undefined;
+    });
     return this.initPromise;
   }
 
-  // ---------------------------------------------------------------------
-  // Banner
-  // ---------------------------------------------------------------------
-
-  /**
-   * Registers global listeners for banner events once.
-   * Prevents duplicate listener registration across navigations.
-   */
-  private async registerBannerListeners(): Promise<void> {
-    if (this.bannerListenersRegistered || !this.isSupported) return;
-    this.bannerListenersRegistered = true;
-
-    try {
-      await AdMob.addListener(BannerAdPluginEvents.Loaded, () => {
-        console.log('[AdMob Banner] Banner loaded successfully.');
-        this.bannerLoaded.set(true);
-        this.bannerRetryAttempts = 0;
-        if (this.bannerRetryTimer) {
-          clearTimeout(this.bannerRetryTimer);
-          this.bannerRetryTimer = undefined;
-        }
-      });
-
-      await AdMob.addListener(BannerAdPluginEvents.FailedToLoad, (err: AdMobError) => {
-        console.warn('[AdMob Banner] FailedToLoad:', err);
-        this.bannerLoaded.set(false);
-        this.setBannerSpace(0);
-        this.scheduleBannerRetry();
-      });
-
-      await AdMob.addListener(BannerAdPluginEvents.SizeChanged, (info) => {
-        console.log('[AdMob Banner] Size changed height:', info.height);
-        if (this.bannerDesired) {
-          this.setBannerSpace(info.height);
-        }
-      });
-    } catch (err) {
-      console.warn('[AdMob Banner] Failed to attach listeners:', err);
-    }
+  private applyConsent(info: AdmobConsentInfo): void {
+    this.consentAllowsAds = info.canRequestAds === true;
+    this.privacyOptionsRequired.set(info.privacyOptionsRequirementStatus === 'REQUIRED');
+    this.initRetryAt = this.consentAllowsAds ? 0 : Date.now() + AD_FAILURE_BACKOFF_MS;
   }
 
-  /**
-   * Shows the bottom adaptive banner. Safe to call repeatedly across screen changes.
-   */
-  async showBanner(): Promise<void> {
-    if (!this.isSupported) return;
-    this.bannerDesired = true;
-    if (this.bannerVisible) return;
-
+  private async ready(): Promise<boolean> {
+    if (!this.foreground()) return false;
     await this.initialize();
-    if (!this.bannerDesired) return;
+    return this.foreground() && this.sdkInitialized && this.consentAllowsAds;
+  }
 
-    if (this.bannerCreated) {
-      try {
-        await AdMob.resumeBanner();
-        this.bannerVisible = true;
-        this.setBannerSpace(this.lastKnownBannerHeight || 50);
-        console.log('[AdMob Banner] Resumed.');
-        return;
-      } catch (err) {
-        console.warn('[AdMob Banner] resumeBanner failed, recreating fresh:', err);
-        this.bannerCreated = false;
-      }
-    }
-
-    const options: BannerAdOptions = {
-      adId: AD_UNIT_IDS.banner,
-      adSize: BannerAdSize.ADAPTIVE_BANNER,
-      position: BannerAdPosition.BOTTOM_CENTER,
-      margin: 0,
-      isTesting: IS_TESTING_ADS,
-    };
-
+  async showPrivacyOptions(): Promise<void> {
+    if (!this.foreground() || this.fullScreenAdActive()) return;
+    this.fullScreenAdActive.set(true);
     try {
-      console.log('[AdMob Banner] Requesting banner ad unit:', AD_UNIT_IDS.banner);
-      await AdMob.showBanner(options);
-      this.bannerCreated = true;
-      this.bannerVisible = true;
-      console.log('[AdMob Banner] Displayed.');
-    } catch (err) {
-      console.warn('[AdMob Banner] showBanner error:', err);
-      // Fallback: if production ad unit failed (e.g. no fill), try test inventory
-      if (!IS_TESTING_ADS) {
-        try {
-          console.log('[AdMob Banner] Retrying with test inventory fallback...');
-          await AdMob.showBanner({ ...options, isTesting: true });
-          this.bannerCreated = true;
-          this.bannerVisible = true;
-          console.log('[AdMob Banner] Fallback test banner displayed.');
-          return;
-        } catch (fallbackErr) {
-          console.warn('[AdMob Banner] Fallback banner failed:', fallbackErr);
-        }
-      }
-      this.bannerVisible = false;
-      this.setBannerSpace(0);
-      this.scheduleBannerRetry();
+      await this.hideBanner();
+      await this.sdk.showPrivacyOptionsForm();
+      this.applyConsent(await this.sdk.requestConsentInfo());
+      this.interstitialLoadedAt = this.rewardedLoadedAt = null;
+      if (this.bannerCreated) await this.sdk.removeBanner();
+      this.bannerCreated = this.bannerVisible = false;
+      this.bannerLoaded.set(false);
+      this.initPromise = undefined;
+    } finally {
+      this.fullScreenAdActive.set(false);
     }
   }
 
-  /**
-   * Hides the banner (e.g. during active gameplay so it never obstructs cannon controls).
-   * Resets the safe-area CSS spacer variable immediately.
-   */
+  showBanner(): Promise<void> {
+    this.bannerDesired = this.foreground();
+    this.updateBannerSpace();
+    return this.queueBanner();
+  }
+
   async hideBanner(): Promise<void> {
     this.bannerDesired = false;
-    if (this.bannerRetryTimer) {
-      clearTimeout(this.bannerRetryTimer);
-      this.bannerRetryTimer = undefined;
-    }
-    if (!this.isSupported || !this.bannerVisible) {
-      this.setBannerSpace(0);
+    await this.queueBanner();
+    if (!this.bannerDesired) this.setBannerSpace(false);
+  }
+
+  private queueBanner(): Promise<void> {
+    this.bannerTask = this.bannerTask.then(() => this.syncBanner()).catch(() => {
+      this.bannerNextRequestAt = Date.now() + AD_FAILURE_BACKOFF_MS;
+    }).finally(() => {
+      this.updateBannerSpace();
+    });
+    return this.bannerTask;
+  }
+
+  private async syncBanner(): Promise<void> {
+    if (!this.bannerDesired || !this.foreground() || this.fullScreenAdActive()) {
+      if (this.bannerVisible) {
+        await this.hideNativeBanner();
+      }
       return;
     }
-    try {
-      console.log('[AdMob Banner] Hiding banner.');
-      await AdMob.hideBanner();
-    } catch (err) {
-      console.warn('[AdMob Banner] hideBanner error:', err);
-    } finally {
-      this.bannerVisible = false;
-      this.setBannerSpace(0);
-    }
-  }
-
-  private scheduleBannerRetry(): void {
-    if (!this.bannerDesired || this.bannerRetryAttempts >= this.MAX_BANNER_RETRIES) return;
-    this.bannerRetryAttempts++;
-    const delay = Math.min(45000, 10000 * Math.pow(2, this.bannerRetryAttempts - 1));
-    console.log(`[AdMob Banner] Scheduling retry #${this.bannerRetryAttempts} in ${delay}ms`);
-    if (this.bannerRetryTimer) clearTimeout(this.bannerRetryTimer);
-    this.bannerRetryTimer = setTimeout(() => {
-      if (this.bannerDesired && !this.bannerVisible) {
-        void this.showBanner();
-      }
-    }, delay);
-  }
-
-  /**
-   * Exposes the banner's live height as CSS vars so bottom-nav and page spacers adjust seamlessly.
-   */
-  private setBannerSpace(heightPx: number): void {
-    const raw = Math.max(0, heightPx);
-    const dpr = window.devicePixelRatio || 1;
-    const space = raw > 90 ? Math.round(raw / dpr) : raw;
-
-    if (space > 0) {
-      this.lastKnownBannerHeight = space;
-      document.documentElement.style.setProperty('--ad-banner-space', `${space}px`);
-      document.documentElement.style.setProperty('--ad-banner-active', '1');
-      document.documentElement.style.setProperty('--bb-nav-bottom-padding', '6px');
-      document.documentElement.style.setProperty('--bb-nav-bottom-gap', '5px');
-      document.body.classList.add('has-ad-banner');
+    if (this.bannerVisible || !await this.ready() || !this.bannerDesired) return;
+    if (this.bannerCreated) {
+      await this.sdk.resumeBanner();
+      this.bannerVisible = true;
     } else {
-      document.documentElement.style.setProperty('--ad-banner-space', '0px');
-      document.documentElement.style.setProperty('--ad-banner-active', '0');
-      document.documentElement.style.setProperty('--bb-nav-bottom-padding', '8px');
-      document.documentElement.style.setProperty('--bb-nav-bottom-gap', '0px');
-      document.body.classList.remove('has-ad-banner');
+      if (Date.now() < this.bannerNextRequestAt) return;
+      await this.registerBannerListeners();
+      if (!this.bannerDesired || !this.foreground() || this.fullScreenAdActive()) return;
+      this.bannerNextRequestAt = Date.now() + AD_REQUEST_INTERVAL_MS;
+      try {
+        await this.sdk.showBanner({ adId: AD_UNIT_IDS.banner, adSize: BannerAdSize.BANNER,
+          position: BannerAdPosition.BOTTOM_CENTER, margin: 0, isTesting: IS_TESTING_ADS });
+        this.bannerCreated = this.bannerVisible = true;
+      } catch {
+        this.bannerNextRequestAt = Date.now() + AD_FAILURE_BACKOFF_MS;
+        this.bannerLoaded.set(false);
+        return;
+      }
+    }
+    // A route/background change while the native request was pending must still hide the result.
+    if (!this.bannerDesired || !this.foreground() || this.fullScreenAdActive()) {
+      await this.hideNativeBanner();
     }
   }
 
-  // ---------------------------------------------------------------------
-  // Interstitial
-  // ---------------------------------------------------------------------
+  private async hideNativeBanner(): Promise<void> {
+    try { await this.sdk.hideBanner(); }
+    catch {
+      await this.sdk.removeBanner();
+      this.bannerCreated = false;
+      this.bannerLoaded.set(false);
+    } finally { this.bannerVisible = false; }
+  }
 
-  /**
-   * Preloads an interstitial in the background with bounded retry and test fallback.
-   * Returns a shared promise if a request is already in-flight.
-   */
-  async preloadInterstitial(): Promise<boolean> {
-    if (!this.isSupported) return false;
-    if (this.interstitialReady) return true;
-    if (this.interstitialLoadPromise) return this.interstitialLoadPromise;
-    if (this.fullScreenAdActive()) return false;
-
-    this.interstitialLoading = true;
-    this.interstitialLoadPromise = (async () => {
-      try {
-        console.log('[AdMob Interstitial] Preparing ad unit:', AD_UNIT_IDS.interstitial);
-        await AdMob.prepareInterstitial({
-          adId: AD_UNIT_IDS.interstitial,
-          isTesting: IS_TESTING_ADS,
-        });
-        this.interstitialReady = true;
-        this.interstitialRetryAttempts = 0;
-        console.log('[AdMob Interstitial] Ready');
-        return true;
-      } catch (err) {
-        console.warn('[AdMob Interstitial] Primary load failed:', err);
-        // Fallback: if production ad unit failed (e.g. no fill on unapproved unit), try test inventory
-        if (!IS_TESTING_ADS) {
-          try {
-            console.log('[AdMob Interstitial] Attempting fallback to test inventory...');
-            await AdMob.prepareInterstitial({
-              adId: AD_UNIT_IDS.interstitial,
-              isTesting: true,
-            });
-            this.interstitialReady = true;
-            this.interstitialRetryAttempts = 0;
-            console.log('[AdMob Interstitial] Fallback test interstitial ready');
-            return true;
-          } catch (fallbackErr) {
-            console.warn('[AdMob Interstitial] Fallback also failed:', fallbackErr);
-          }
+  private async registerBannerListeners(): Promise<void> {
+    if (this.bannerListenersRegistered) return;
+    const handles = await Promise.all([
+      this.sdk.addListener(BannerAdPluginEvents.Loaded, () => {
+        this.bannerLoaded.set(true);
+        this.updateBannerSpace();
+      }),
+      this.sdk.addListener(BannerAdPluginEvents.FailedToLoad, () => {
+        this.bannerLoaded.set(false);
+        this.bannerCreated = this.bannerVisible = false;
+        this.bannerNextRequestAt = Date.now() + AD_FAILURE_BACKOFF_MS;
+        this.updateBannerSpace();
+      }),
+      this.sdk.addListener(BannerAdPluginEvents.SizeChanged, ({ height }) => {
+        if (height <= 0) {
+          this.bannerVisible = false;
+          this.updateBannerSpace();
         }
-        this.interstitialReady = false;
-        this.scheduleInterstitialRetry();
+      }),
+    ]);
+    if (this.disposed) { await Promise.all(handles.map((handle) => handle.remove())); return; }
+    this.bannerHandles.push(...handles);
+    this.bannerListenersRegistered = true;
+  }
+
+  private setBannerSpace(reserved: boolean): void {
+    // Keep a gap above a visible 320x50 banner; no ad means no empty menu offset.
+    const space = reserved ? BANNER_HEIGHT_PX + BANNER_CONTROL_GAP_PX : 0;
+    document.documentElement.style.setProperty('--ad-banner-space', `${space}px`);
+  }
+
+  private updateBannerSpace(): void {
+    this.setBannerSpace(this.bannerDesired && this.bannerVisible && this.bannerLoaded()
+      && this.foreground() && !this.fullScreenAdActive());
+  }
+
+  recordCompletedRound(sessionId: string): void {
+    if (!sessionId || this.recordedRounds.has(sessionId)) return;
+    this.recordedRounds.add(sessionId);
+    this.completedRounds++;
+    if (this.completedRounds >= INTERSTITIAL_EVERY_N_ROUNDS) void this.preloadInterstitial();
+  }
+
+  private fresh(loadedAt: number | null): boolean {
+    return loadedAt !== null && Date.now() - loadedAt < AD_CACHE_LIFETIME_MS;
+  }
+
+  private async preloadInterstitial(): Promise<boolean> {
+    if (!this.foreground() || this.fullScreenAdActive()) return false;
+    if (this.fresh(this.interstitialLoadedAt)) return true;
+    if (this.interstitialLoad) return this.interstitialLoad;
+    if (Date.now() < this.interstitialNextRequestAt) return false;
+    this.interstitialNextRequestAt = Date.now() + AD_REQUEST_INTERVAL_MS;
+    this.interstitialLoad = (async () => {
+      try {
+        if (!await this.ready()) return false;
+        await this.sdk.prepareInterstitial({ adId: AD_UNIT_IDS.interstitial, isTesting: IS_TESTING_ADS });
+        this.interstitialLoadedAt = Date.now();
+        return true;
+      } catch {
+        this.interstitialNextRequestAt = Date.now() + AD_FAILURE_BACKOFF_MS;
         return false;
-      } finally {
-        this.interstitialLoading = false;
-        this.interstitialLoadPromise = undefined;
-      }
+      } finally { this.interstitialLoad = undefined; }
     })();
-
-    return this.interstitialLoadPromise;
+    return this.interstitialLoad;
   }
 
-  private scheduleInterstitialRetry(): void {
-    if (this.interstitialReady || this.interstitialRetryAttempts >= this.MAX_INTERSTITIAL_RETRIES) return;
-    this.interstitialRetryAttempts++;
-    const delay = Math.min(30000, 5000 * Math.pow(2, this.interstitialRetryAttempts - 1));
-    console.log(`[AdMob Interstitial] Scheduling retry #${this.interstitialRetryAttempts} in ${delay}ms`);
-    if (this.interstitialRetryTimer) clearTimeout(this.interstitialRetryTimer);
-    this.interstitialRetryTimer = setTimeout(() => {
-      void this.preloadInterstitial();
-    }, delay);
-  }
-
-  /**
-   * Paced display of interstitial ads at natural transition points (e.g. game over navigation).
-   * Complies with Google frequency capping: min rounds and cooldown time.
-   */
   async maybeShowInterstitialAtBreakpoint(): Promise<void> {
-    if (!this.isSupported) return;
-    this.roundsSinceInterstitial++;
-    const timeSinceLastAd = Date.now() - this.lastFullScreenAdTime;
-    if (
-      this.roundsSinceInterstitial < INTERSTITIAL_EVERY_N_ROUNDS ||
-      timeSinceLastAd < INTERSTITIAL_MIN_INTERVAL_MS
-    ) {
-      console.log(
-        `[AdMob Interstitial] Breakpoint skipped: rounds=${this.roundsSinceInterstitial}/${INTERSTITIAL_EVERY_N_ROUNDS}, time=${Math.round(timeSinceLastAd / 1000)}s`
-      );
-      return;
-    }
-    this.roundsSinceInterstitial = 0;
-    await this.showInterstitial();
-  }
-
-  /**
-   * Shows the interstitial ad if ready or quickly available within INTERSTITIAL_TIMEOUT_MS.
-   * Awaits user dismissal before resolving to guarantee smooth navigation.
-   */
-  async showInterstitial(): Promise<boolean> {
-    if (!this.isSupported || this.interstitialBusy || this.fullScreenAdActive()) return false;
-    this.interstitialBusy = true;
-
+    if (!this.foreground() || this.fullScreenAdActive() || this.rewardedBusy()
+      || this.completedRounds < INTERSTITIAL_EVERY_N_ROUNDS || this.fullScreenCount >= FULLSCREEN_SESSION_LIMIT
+      || Date.now() - (this.lastFullScreenAt ?? this.startedAt) < INTERSTITIAL_MIN_INTERVAL_MS) return;
+    // Never wait for an ad at navigation time or display a late load on the next screen.
+    if (!this.fresh(this.interstitialLoadedAt)) { void this.preloadInterstitial(); return; }
+    this.interstitialLoadedAt = null;
+    this.fullScreenAdActive.set(true);
     try {
-      await this.initialize();
-      if (!this.interstitialReady) {
-        console.log('[AdMob Interstitial] Awaiting load within timeout...');
-        await Promise.race([
-          this.preloadInterstitial(),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), INTERSTITIAL_TIMEOUT_MS)),
-        ]);
-      }
-      if (!this.interstitialReady) {
-        console.warn('[AdMob Interstitial] Not ready; continuing without delay.');
-        return false;
-      }
-
-      this.interstitialReady = false;
-      this.fullScreenAdActive.set(true);
-
-      return await new Promise<boolean>((resolve) => {
-        let settled = false;
-        const handles: Promise<PluginListenerHandle>[] = [];
-        let safetyTimer: ReturnType<typeof setTimeout>;
-
-        const cleanup = () => {
-          if (safetyTimer) clearTimeout(safetyTimer);
-          handles.forEach((h) => h.then((handle) => handle.remove()).catch(() => {}));
-        };
-
-        const finish = (shown: boolean) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          this.lastFullScreenAdTime = Date.now();
-          console.log(`[AdMob Interstitial] Finished (shown=${shown})`);
-          resolve(shown);
-        };
-
-        handles.push(AdMob.addListener(InterstitialAdPluginEvents.Dismissed, () => finish(true)));
-        handles.push(
-          AdMob.addListener(InterstitialAdPluginEvents.FailedToShow, (err: AdMobError) => {
-            console.warn('[AdMob Interstitial] FailedToShow:', err);
-            finish(false);
-          })
-        );
-
-        safetyTimer = setTimeout(() => {
-          console.warn('[AdMob Interstitial] Safety timeout reached.');
-          finish(false);
-        }, 180000);
-
-        // Call without arguments so plugin resolves to lastPreparedAdId
-        AdMob.showInterstitial()
-          .then(() => console.log('[AdMob Interstitial] Presented.'))
-          .catch((err) => {
-            console.warn('[AdMob Interstitial] showInterstitial error:', err);
-            finish(false);
-          });
-      });
-    } finally {
-      this.fullScreenAdActive.set(false);
-      this.interstitialBusy = false;
-      setTimeout(() => void this.preloadInterstitial(), 800);
-    }
+      await this.hideBanner();
+      if (!this.foreground()) return;
+      const shown = await this.presentInterstitial();
+      if (shown) this.completedRounds = 0;
+    } finally { this.fullScreenAdActive.set(false); }
   }
 
-  // ---------------------------------------------------------------------
-  // Rewarded Video
-  // ---------------------------------------------------------------------
-
-  /**
-   * Preloads a rewarded video ad with bounded backoff retry.
-   * If production ad unit returns no fill during testing/unapproved phase,
-   * falls back to test inventory so that user ad buttons always display ads.
-   */
-  async preloadRewarded(): Promise<boolean> {
-    if (!this.isSupported) return false;
-    if (this.rewardedReady) return true;
-    if (this.rewardedLoadPromise) return this.rewardedLoadPromise;
-    if (this.fullScreenAdActive()) return false;
-
-    this.rewardedLoading = true;
-    this.rewardedLoadPromise = (async () => {
-      try {
-        console.log('[AdMob Rewarded] Preparing ad with ID:', AD_UNIT_IDS.rewarded);
-        await AdMob.prepareRewardVideoAd({
-          adId: AD_UNIT_IDS.rewarded,
-          isTesting: IS_TESTING_ADS,
-        });
-        this.rewardedReady = true;
-        this.rewardedRetryAttempts = 0;
-        console.log('[AdMob Rewarded] Ready to show');
-        return true;
-      } catch (err) {
-        console.warn('[AdMob Rewarded] Primary load failed:', err);
-        // Fallback: if production ad unit failed (e.g. no fill on unapproved unit), try test inventory
-        if (!IS_TESTING_ADS) {
-          try {
-            console.log('[AdMob Rewarded] Attempting fallback to test inventory...');
-            await AdMob.prepareRewardVideoAd({
-              adId: AD_UNIT_IDS.rewarded,
-              isTesting: true,
-            });
-            this.rewardedReady = true;
-            this.rewardedRetryAttempts = 0;
-            console.log('[AdMob Rewarded] Fallback test ad ready to show');
-            return true;
-          } catch (fallbackErr) {
-            console.warn('[AdMob Rewarded] Fallback also failed:', fallbackErr);
-          }
-        }
-        this.rewardedReady = false;
-        this.scheduleRewardedRetry();
-        return false;
-      } finally {
-        this.rewardedLoading = false;
-        this.rewardedLoadPromise = undefined;
-      }
-    })();
-
-    return this.rewardedLoadPromise;
+  private async presentInterstitial(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const handles: PluginListenerHandle[] = [];
+      let settled = false;
+      const timer = setTimeout(() => finish(false), 180_000);
+      const finish = (shown: boolean) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer); this.cancelFullScreen = undefined;
+        handles.forEach((handle) => void handle.remove().catch(() => undefined));
+        this.noteFullScreen(); resolve(shown);
+      };
+      this.cancelFullScreen = () => finish(false);
+      const track = async (registration: Promise<PluginListenerHandle>) => {
+        const handle = await registration;
+        if (settled) await handle.remove();
+        else handles.push(handle);
+      };
+      void (async () => {
+        try {
+          await track(this.sdk.addListener(InterstitialAdPluginEvents.Dismissed, () => finish(true)));
+          await track(this.sdk.addListener(InterstitialAdPluginEvents.FailedToShow, () => finish(false)));
+          if (settled || !this.foreground()) { finish(false); return; }
+          await this.sdk.showInterstitial();
+        } catch { finish(false); }
+      })();
+    });
   }
 
-  private scheduleRewardedRetry(): void {
-    if (this.rewardedReady || this.rewardedRetryAttempts >= this.MAX_REWARDED_RETRIES) return;
-    this.rewardedRetryAttempts++;
-    const delay = Math.min(30000, 5000 * Math.pow(2, this.rewardedRetryAttempts - 1));
-    console.log(`[AdMob Rewarded] Scheduling retry #${this.rewardedRetryAttempts} in ${delay}ms`);
-    if (this.rewardedRetryTimer) clearTimeout(this.rewardedRetryTimer);
-    this.rewardedRetryTimer = setTimeout(() => {
-      void this.preloadRewarded();
-    }, delay);
-  }
-
-  /**
-   * Shows a rewarded video ad and resolves true ONLY when the reward callback fires.
-   * Decouples Rewarded from Dismissed:
-   * - Rewarded: marks rewardEarned = true.
-   * - Dismissed: finishes and returns rewardEarned.
-   * - FailedToShow / early close without reward: returns false.
-   * Sets `lastRewardFailureReason` so callers display accurate user feedback.
-   */
-  async showRewarded(): Promise<boolean> {
+  async showRewarded(placement: 'cosmetic-unlock'): Promise<boolean> {
     this.lastRewardFailureReason = undefined;
-
-    if (!this.isSupported) {
-      return this.simulateWebRewardedAd();
+    if (placement !== 'cosmetic-unlock') { this.lastRewardFailureReason = 'unsupported_reward'; return false; }
+    if (!this.foreground()) { this.lastRewardFailureReason = 'unsupported'; return false; }
+    if (this.rewardedBusy() || this.fullScreenAdActive()) { this.lastRewardFailureReason = 'busy'; return false; }
+    if (this.fullScreenCount >= FULLSCREEN_SESSION_LIMIT) { this.lastRewardFailureReason = 'session_limit'; return false; }
+    if (this.lastFullScreenAt !== null && Date.now() - this.lastFullScreenAt < REWARDED_MIN_INTERVAL_MS) {
+      this.lastRewardFailureReason = 'cooldown'; return false;
     }
-
-    if (this.rewardedBusy() || this.fullScreenAdActive()) {
-      this.lastRewardFailureReason = 'busy';
-      return false;
-    }
-
     this.rewardedBusy.set(true);
     this.fullScreenAdActive.set(true);
-
     try {
-      await this.initialize();
-      if (!this.rewardedReady) {
-        console.log('[AdMob Rewarded] Ad not ready yet, awaiting load...');
-        await Promise.race([
-          this.preloadRewarded(),
-          new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 8000)),
-        ]);
-      }
-
-      if (!this.rewardedReady) {
-        console.warn('[AdMob Rewarded] Ad was not ready to show.');
-        this.lastRewardFailureReason = 'not_ready';
-        return false;
-      }
-
-      this.rewardedReady = false;
-
-      return await new Promise<boolean>((resolve) => {
-        let settled = false;
-        let rewardEarned = false;
-        const handles: Promise<PluginListenerHandle>[] = [];
-        let safetyTimer: ReturnType<typeof setTimeout>;
-
-        const cleanup = () => {
-          if (safetyTimer) clearTimeout(safetyTimer);
-          handles.forEach((h) => h.then((handle) => handle.remove()).catch(() => {}));
-        };
-
-        const finish = (granted: boolean, reason?: RewardFailureReason) => {
-          if (settled) return;
-          settled = true;
-          cleanup();
-          this.lastFullScreenAdTime = Date.now();
-          this.roundsSinceInterstitial = 0;
-          if (!granted) {
-            this.lastRewardFailureReason = reason ?? (rewardEarned ? undefined : 'dismissed_early');
-          }
-          console.log(`[AdMob Rewarded] Session ended. Granted: ${granted}, reason: ${this.lastRewardFailureReason}`);
-          resolve(granted);
-        };
-
-        // 1. Reward verified event
-        handles.push(
-          AdMob.addListener(RewardAdPluginEvents.Rewarded, (item: AdMobRewardItem) => {
-            console.log('[AdMob Rewarded] RewardAdPluginEvents.Rewarded verified:', item);
-            rewardEarned = true;
-          })
-        );
-
-        // 2. Dismissed event
-        handles.push(
-          AdMob.addListener(RewardAdPluginEvents.Dismissed, () => {
-            console.log(`[AdMob Rewarded] Dismissed. Earned: ${rewardEarned}`);
-            finish(rewardEarned, rewardEarned ? undefined : 'dismissed_early');
-          })
-        );
-
-        // 3. Failed to show event
-        handles.push(
-          AdMob.addListener(RewardAdPluginEvents.FailedToShow, (err: AdMobError) => {
-            console.warn('[AdMob Rewarded] FailedToShow:', err);
-            finish(false, 'failed_to_show');
-          })
-        );
-
-        // 4. Safety fallback (5 minutes)
-        safetyTimer = setTimeout(() => {
-          console.warn('[AdMob Rewarded] Safety timeout reached.');
-          finish(rewardEarned, rewardEarned ? undefined : 'not_ready');
-        }, 300000);
-
-        // 5. Present ad (no options passed so native plugin resolves to lastPreparedAdId)
-        AdMob.showRewardVideoAd()
-          .then((item: AdMobRewardItem) => {
-            console.log('[AdMob Rewarded] showRewardVideoAd completed:', item);
-            if (item) rewardEarned = true;
-          })
-          .catch((err) => {
-            console.warn('[AdMob Rewarded] showRewardVideoAd error:', err);
-            finish(false, 'failed_to_show');
-          });
-      });
-    } finally {
-      this.fullScreenAdActive.set(false);
-      this.rewardedBusy.set(false);
-      setTimeout(() => void this.preloadRewarded(), 800);
-    }
+      await this.hideBanner();
+      if (!await this.ready()) { this.lastRewardFailureReason = 'consent'; return false; }
+      const loaded = await this.withLoadTimeout(this.loadRewarded());
+      if (!loaded || !this.foreground()) { this.lastRewardFailureReason = 'not_ready'; return false; }
+      this.rewardedLoadedAt = null;
+      return await this.presentRewarded();
+    } catch { this.lastRewardFailureReason = 'failed_to_show'; return false; }
+    finally { this.fullScreenAdActive.set(false); this.rewardedBusy.set(false); }
   }
 
-  /** Dev/browser-only stand-in for desktop testing. */
-  private simulateWebRewardedAd(): Promise<boolean> {
-    this.rewardedBusy.set(true);
-    return new Promise((resolve) =>
-      setTimeout(() => {
-        this.rewardedBusy.set(false);
-        this.lastFullScreenAdTime = Date.now();
-        this.roundsSinceInterstitial = 0;
-        resolve(true);
-      }, 1500)
-    );
+  private loadRewarded(): Promise<boolean> {
+    if (this.fresh(this.rewardedLoadedAt)) return Promise.resolve(true);
+    if (this.rewardedLoad) return this.rewardedLoad;
+    if (Date.now() < this.rewardedNextRequestAt) return Promise.resolve(false);
+    this.rewardedNextRequestAt = Date.now() + AD_REQUEST_INTERVAL_MS;
+    this.rewardedLoad = (async () => {
+      try {
+        await this.sdk.prepareRewardVideoAd({ adId: AD_UNIT_IDS.rewarded, isTesting: IS_TESTING_ADS });
+        this.rewardedLoadedAt = Date.now(); return true;
+      } catch { this.rewardedNextRequestAt = Date.now() + AD_FAILURE_BACKOFF_MS; return false; }
+      finally { this.rewardedLoad = undefined; }
+    })();
+    return this.rewardedLoad;
+  }
+
+  private async withLoadTimeout(load: Promise<boolean>): Promise<boolean> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    try {
+      return await Promise.race([load, new Promise<boolean>((resolve) => {
+        timer = setTimeout(() => resolve(false), REWARDED_LOAD_TIMEOUT_MS);
+      })]);
+    } finally { if (timer) clearTimeout(timer); }
+  }
+
+  private presentRewarded(): Promise<boolean> {
+    return new Promise((resolve) => {
+      const handles: PluginListenerHandle[] = [];
+      let earned = false; let settled = false;
+      const timer = setTimeout(() => finish(false, 'failed_to_show'), 300_000);
+      const finish = (granted: boolean, reason?: RewardFailureReason) => {
+        if (settled) return;
+        settled = true; clearTimeout(timer); this.cancelFullScreen = undefined;
+        handles.forEach((handle) => void handle.remove().catch(() => undefined));
+        this.noteFullScreen(); this.lastRewardFailureReason = reason; resolve(granted);
+      };
+      this.cancelFullScreen = () => finish(false, 'failed_to_show');
+      const track = async (registration: Promise<PluginListenerHandle>) => {
+        const handle = await registration;
+        if (settled) await handle.remove();
+        else handles.push(handle);
+      };
+      void (async () => {
+        try {
+          await track(this.sdk.addListener(RewardAdPluginEvents.Rewarded, () => { earned = true; }));
+          await track(this.sdk.addListener(RewardAdPluginEvents.Dismissed, () => {
+            // Flush the SDK promise's earned-reward callback before interpreting dismissal.
+            queueMicrotask(() => finish(earned, earned ? undefined : 'dismissed_early'));
+          }));
+          await track(this.sdk.addListener(RewardAdPluginEvents.FailedToShow, () => finish(false, 'failed_to_show')));
+          if (settled || !this.foreground()) { finish(false, 'failed_to_show'); return; }
+          // The native plugin resolves this promise on OnUserEarnedReward, not on presentation.
+          const reward = await this.sdk.showRewardVideoAd();
+          if (reward) earned = true;
+        } catch { finish(false, 'failed_to_show'); }
+      })();
+    });
+  }
+
+  private noteFullScreen(): void {
+    this.lastFullScreenAt = Date.now(); this.fullScreenCount++;
+  }
+
+  ngOnDestroy(): void {
+    this.disposed = true; this.bannerDesired = false;
+    this.cancelFullScreen?.();
+    this.bannerHandles.forEach((handle) => void handle.remove().catch(() => undefined));
+    if (this.bannerCreated) void this.sdk.removeBanner().catch(() => undefined);
+    this.setBannerSpace(false);
   }
 }

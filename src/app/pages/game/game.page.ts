@@ -1,6 +1,6 @@
 import { AfterViewInit, Component, ElementRef, HostListener, OnDestroy, ViewChild, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { ViewDidEnter, ViewWillLeave, ToastController } from '@ionic/angular';
+import { ViewDidEnter, ViewWillLeave } from '@ionic/angular';
 import { Subscription } from 'rxjs';
 import { BallBlasterEngine } from '../../core/game-engine/ball-blaster-engine';
 import { GameRewardService } from '../../core/services/game-reward.service';
@@ -8,11 +8,8 @@ import { ShopService } from '../../core/services/shop.service';
 import { PlayerProfileService } from '../../core/services/player-profile.service';
 import { LastGameResultService } from '../../core/services/last-game-result.service';
 import { AudioService } from '../../core/services/audio.service';
-import { AdmobService } from '../../core/services/admob.service';
 import { ECONOMY_CONFIG } from '../../core/config/economy.config';
 import { EngineResult } from '../../core/game-engine/engine.types';
-
-const CONTINUE_COUNTDOWN_SECONDS = 6;
 
 @Component({
   selector: 'app-game',
@@ -26,9 +23,9 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
   private engine?: BallBlasterEngine;
   private sessionId = '';
   private levelUpTimer?: ReturnType<typeof setTimeout>;
-  private continueCountdownTimer?: ReturnType<typeof setTimeout>;
   private viewInitialized = false;
   private shopSub?: Subscription;
+  private viewActive = false;
 
   /**
    * This app runs zoneless (no zone.js — see angular.json's empty
@@ -42,14 +39,14 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
   readonly score = signal(0);
   readonly coinsThisRun = signal(0);
   readonly lives = signal<number>(ECONOMY_CONFIG.startingLives);
-  readonly level = signal(this.profileService.current.highestLevel);
+  readonly level = signal(1);
   readonly multiplierActive = signal(false);
+  readonly multiplierSeconds = signal(0);
+  readonly levelBonus = ECONOMY_CONFIG.levelCompleteCoins;
+  readonly showControlsHint = signal(true);
   readonly showLevelUp = signal(false);
   readonly paused = signal(false);
 
-  readonly showContinuePrompt = signal(false);
-  readonly continueAdLoading = signal(false);
-  readonly continueSecondsLeft = signal(CONTINUE_COUNTDOWN_SECONDS);
 
   finishing = false;
 
@@ -59,16 +56,13 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
     private readonly shopService: ShopService,
     private readonly profileService: PlayerProfileService,
     private readonly lastGameResultService: LastGameResultService,
-    private readonly audioService: AudioService,
-    private readonly admobService: AdmobService,
-    private readonly toastCtrl: ToastController
+    private readonly audioService: AudioService
   ) {}
 
   ngAfterViewInit(): void {
     this.viewInitialized = true;
-    this.shopSub = this.shopService.equippedCannonId$.subscribe((id) => {
-      const item = this.shopService.getItem(id);
-      if (item && this.engine) this.engine.setCannonAccent(item.accent);
+    this.shopSub = this.shopService.appearance$.subscribe((appearance) => {
+      this.engine?.setAppearance(appearance);
     });
   }
 
@@ -90,17 +84,17 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
 
   private startNewGame(): void {
     this.cleanupGame();
+    this.viewActive = true;
 
     this.finishing = false;
     this.score.set(0);
     this.coinsThisRun.set(0);
     this.lives.set(ECONOMY_CONFIG.startingLives);
     this.multiplierActive.set(false);
+    this.multiplierSeconds.set(0);
+    this.showControlsHint.set(true);
     this.showLevelUp.set(false);
     this.paused.set(false);
-    this.showContinuePrompt.set(false);
-    this.continueAdLoading.set(false);
-    this.continueSecondsLeft.set(CONTINUE_COUNTDOWN_SECONDS);
 
     const canvas = this.canvasRef?.nativeElement;
     if (!canvas) return;
@@ -115,10 +109,12 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
         onScoreChange: (score) => this.score.set(score),
         onCoinsChange: (coins) => this.coinsThisRun.set(coins),
         onLivesChange: (lives) => this.lives.set(lives),
-        onMultiplierChange: (active) => this.multiplierActive.set(active),
+        onMultiplierChange: (active, remaining) => {
+          this.multiplierActive.set(active);
+          this.multiplierSeconds.set(Math.ceil(remaining / 1000));
+        },
         onGameOver: (result) => this.handleGameOver(result),
         onLevelChange: (level) => this.handleLevelUp(level),
-        onContinueOffer: () => this.handleContinueOffer(),
         onShoot: () => this.audioService.shoot(),
         onBulletImpact: () => this.audioService.ballHit(),
         onBallDestroyed: (tier) => this.audioService.ballDestroyed(tier),
@@ -128,17 +124,18 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
       startLevel
     );
 
-    const equippedId = localStorage.getItem('bb.shop.equipped-cannon.v1') || 'default-cannon';
-    const item = this.shopService.getItem(equippedId);
-    if (item) this.engine.setCannonAccent(item.accent);
+    this.engine.setAppearance(this.shopService.appearance);
 
     const session = this.gameRewardService.startSession();
     this.sessionId = session.sessionId;
     this.audioService.startMusic();
+    this.audioService.resumeMusic();
     this.engine.start();
   }
 
   private cleanupGame(): void {
+    this.viewActive = false;
+    this.audioService.pauseMusic();
     if (this.engine) {
       this.engine.destroy();
       this.engine = undefined;
@@ -147,18 +144,27 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
       clearTimeout(this.levelUpTimer);
       this.levelUpTimer = undefined;
     }
-    if (this.continueCountdownTimer) {
-      clearTimeout(this.continueCountdownTimer);
-      this.continueCountdownTimer = undefined;
-    }
   }
 
-  @HostListener('window:resize')
-  onResize(): void {
-    this.engine?.resize();
+  @HostListener('document:visibilitychange')
+  onVisibilityChange(): void {
+    if (document.hidden) this.pauseForBackground();
+  }
+
+  @HostListener('window:blur')
+  pauseForBackground(): void {
+    if (!this.viewActive || this.finishing) return;
+    this.engine?.pause();
+    this.audioService.pauseMusic();
+    this.paused.set(true);
+  }
+
+  dismissControlsHint(): void {
+    this.showControlsHint.set(false);
   }
 
   togglePause(): void {
+    if (!this.viewActive || this.finishing) return;
     const next = !this.paused();
     this.paused.set(next);
     if (this.engine) {
@@ -189,76 +195,12 @@ export class GamePage implements AfterViewInit, ViewDidEnter, ViewWillLeave, OnD
     this.levelUpTimer = setTimeout(() => this.showLevelUp.set(false), 1400);
   }
 
-  // ---------------------------------------------------------------------
-  // "Watch ad to continue" — offered once, the moment lives would hit 0.
-  // ---------------------------------------------------------------------
-
-  private handleContinueOffer(): void {
-    this.showContinuePrompt.set(true);
-    this.continueSecondsLeft.set(CONTINUE_COUNTDOWN_SECONDS);
-    this.tickContinueCountdown();
-  }
-
-  private tickContinueCountdown(): void {
-    if (this.continueCountdownTimer) clearTimeout(this.continueCountdownTimer);
-    this.continueCountdownTimer = setTimeout(() => {
-      const remaining = this.continueSecondsLeft() - 1;
-      this.continueSecondsLeft.set(remaining);
-      if (remaining <= 0) this.declineContinue();
-      else this.tickContinueCountdown();
-    }, 1000);
-  }
-
-  /** Never credits or resumes anything until AdmobService confirms the ad was actually watched. */
-  async watchAdToContinue(): Promise<void> {
-    if (this.continueAdLoading()) return;
-    this.continueAdLoading.set(true);
-    if (this.continueCountdownTimer) clearTimeout(this.continueCountdownTimer);
-
-    const granted = await this.admobService.showRewarded();
-    this.continueAdLoading.set(false);
-
-    if (granted) {
-      this.showContinuePrompt.set(false);
-      this.audioService.claimReward();
-      this.engine?.grantContinue();
-      const toast = await this.toastCtrl.create({
-        message: 'Revived with 1 life! Blast away!',
-        duration: 1800,
-        color: 'success',
-        position: 'bottom',
-      });
-      await toast.present();
-    } else {
-      const reason = this.admobService.lastRewardFailureReason;
-      const msg =
-        reason === 'dismissed_early'
-          ? 'Ad closed early — continue not granted.'
-          : 'Ad is currently unavailable. Please try again.';
-      const toast = await this.toastCtrl.create({
-        message: msg,
-        duration: 1800,
-        color: 'warning',
-        position: 'bottom',
-      });
-      await toast.present();
-      this.tickContinueCountdown();
-    }
-  }
-
-  declineContinue(): void {
-    if (this.continueCountdownTimer) clearTimeout(this.continueCountdownTimer);
-    this.showContinuePrompt.set(false);
-    this.engine?.declineContinue();
-  }
-
   private handleGameOver(result: EngineResult): void {
     if (this.finishing) return;
     this.finishing = true;
     this.audioService.gameOver();
 
-    this.profileService.recordGameFinished(result.score);
-    this.profileService.recordLevelReached(result.levelReached);
+    this.profileService.recordGameFinished(result.score, result.levelReached);
 
     this.gameRewardService
       .completeSession({

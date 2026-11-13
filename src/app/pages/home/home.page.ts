@@ -4,7 +4,6 @@ import { Observable } from 'rxjs';
 import { WalletService } from '../../core/services/wallet.service';
 import { PlayerProfileService } from '../../core/services/player-profile.service';
 import { DailyRewardsService } from '../../core/services/daily-rewards.service';
-import { AdmobService } from '../../core/services/admob.service';
 import { WalletSnapshot } from '../../core/models/wallet.models';
 
 interface QuickAccessItem {
@@ -34,31 +33,25 @@ export class HomePage {
     { label: 'Settings', icon: 'settings', path: '/settings', color: '#94a3b8' },
   ];
 
-  // A signal, not a plain field: this app runs zoneless, and it flips back
-  // to false inside an async AdmobService continuation, which zoneless
-  // change detection cannot see on its own (see README's zoneless note).
+  // Keep the play button locked until navigation finishes.
   readonly launchingGame = signal(false);
 
   constructor(
     private readonly router: Router,
     private readonly walletService: WalletService,
     private readonly profileService: PlayerProfileService,
-    private readonly dailyRewardsService: DailyRewardsService,
-    private readonly admobService: AdmobService
+    private readonly dailyRewardsService: DailyRewardsService
   ) {}
 
-  /**
-   * Navigates directly to the game (no unexpected interstitials).
-
-
-
-   */
-  playNow(): void {
+  async playNow(): Promise<void> {
     if (this.launchingGame()) return;
     this.launchingGame.set(true);
 
-    this.launchingGame.set(false);
-    this.router.navigateByUrl('/game');
+    try {
+      await this.router.navigateByUrl('/game');
+    } finally {
+      this.launchingGame.set(false);
+    }
   }
 
   open(path: string): void {

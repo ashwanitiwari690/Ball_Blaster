@@ -1,7 +1,9 @@
-<ion-content [fullscreen]="true" class="game-content">
+<ion-content [fullscreen]="true" [scrollY]="false" class="game-content">
   <div class="game-stage">
     <canvas #gameCanvas class="game-canvas"
-      [style.pointer-events]="(paused() || showContinuePrompt()) ? 'none' : 'auto'">
+      aria-label="Ball Blaster playfield. Drag to aim or use the left and right arrow keys. The cannon fires automatically."
+      (pointerdown)="dismissControlsHint()" (keydown)="dismissControlsHint()" tabindex="0"
+      [style.pointer-events]="paused() ? 'none' : 'auto'">
     </canvas>
 
     <div class="game-hud-top">
@@ -15,10 +17,16 @@
         <div class="game-score-value">{{ score() | number }}</div>
       </div>
 
-      <button class="game-pause-btn" (click)="togglePause()" type="button" aria-label="Pause game">
+      <button class="game-pause-btn" (click)="togglePause()" type="button" [attr.aria-label]="paused() ? 'Resume game' : 'Pause game'">
         <ion-icon [name]="paused() ? 'play' : 'pause'"></ion-icon>
       </button>
     </div>
+
+    @if (showControlsHint() && !paused()) {
+    <div class="game-controls-hint">
+      Drag to aim &bull; Auto fire<br><small>Keep clearing balls for score streaks. Arrows / A D also work.</small>
+    </div>
+    }
 
     <div class="game-hud-bottom-left">
       <span class="bb-pill game-level-pill">LVL {{ level() }}</span>
@@ -28,46 +36,26 @@
       </span>
     </div>
 
-    <div class="game-multiplier-badge" *ngIf="multiplierActive()">x2</div>
+    @if (multiplierActive()) {
+      <div class="game-multiplier-badge">x2 &bull; {{ multiplierSeconds() }}s</div>
+    }
 
-    <div class="game-levelup-banner" *ngIf="showLevelUp()">
+    @if (showLevelUp()) {
+    <div class="game-levelup-banner">
       <div class="game-levelup-title">LEVEL {{ level() }}</div>
-      <div class="game-levelup-sub">+10 bonus coins</div>
+      <div class="game-levelup-sub">+{{ levelBonus }} bonus coins</div>
     </div>
+    }
 
-    <div class="game-pause-overlay" *ngIf="paused()">
+    @if (paused()) {
+    <div class="game-pause-overlay">
       <div class="game-pause-card">
         <h2>PAUSED</h2>
         <button type="button" class="bb-action-btn pause-resume-btn" (click)="togglePause()">RESUME</button>
         <button type="button" class="bb-action-btn pause-quit-btn" (click)="quitGame()">QUIT &amp; CASH OUT</button>
       </div>
     </div>
+    }
 
-    <div class="game-pause-overlay" *ngIf="showContinuePrompt()">
-      <div class="game-pause-card">
-        <h2>OUT OF LIVES</h2>
-        <p class="game-continue-sub">Watch a short ad to continue with 1 life ({{ continueSecondsLeft() }}s)</p>
-        <button
-          type="button"
-          class="bb-action-btn pause-resume-btn"
-          [disabled]="continueAdLoading()"
-          (click)="watchAdToContinue()"
-        >
-          <ion-spinner name="dots" *ngIf="continueAdLoading()"></ion-spinner>
-          <ng-container *ngIf="!continueAdLoading()">
-            <ion-icon name="play-circle" style="margin-right: 6px; font-size: 20px;"></ion-icon>
-            Watch Ad to Continue
-          </ng-container>
-        </button>
-        <button
-          type="button"
-          class="bb-action-btn pause-quit-btn"
-          [disabled]="continueAdLoading()"
-          (click)="declineContinue()"
-        >
-          No Thanks
-        </button>
-      </div>
-    </div>
   </div>
 </ion-content>

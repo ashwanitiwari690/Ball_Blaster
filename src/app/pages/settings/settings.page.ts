@@ -4,8 +4,8 @@ import { AlertController, ToastController } from '@ionic/angular';
 import { Capacitor } from '@capacitor/core';
 import { App } from '@capacitor/app';
 import { SettingsService } from '../../core/services/settings.service';
-import { AudioService } from '../../core/services/audio.service';
 import { PlayerProfileService } from '../../core/services/player-profile.service';
+import { AdmobService } from '../../core/services/admob.service';
 
 @Component({
   selector: 'app-settings',
@@ -20,8 +20,8 @@ export class SettingsPage implements OnInit {
   constructor(
     private readonly router: Router,
     private readonly settingsService: SettingsService,
-    private readonly audioService: AudioService,
     private readonly playerProfileService: PlayerProfileService,
+    readonly admob: AdmobService,
     private readonly alertCtrl: AlertController,
     private readonly toastCtrl: ToastController
   ) {}
@@ -48,9 +48,16 @@ export class SettingsPage implements OnInit {
     this.settingsService.update({ soundEnabled: enabled });
   }
 
+  async openAdPrivacy(): Promise<void> {
+    try { await this.admob.showPrivacyOptions(); }
+    catch {
+      const toast = await this.toastCtrl.create({ message: 'Privacy options are unavailable. Please try again.', duration: 1800 });
+      await toast.present();
+    }
+  }
+
   toggleMusic(enabled: boolean): void {
     this.settingsService.update({ musicEnabled: enabled });
-    if (enabled) this.audioService.startMusic();
   }
 
   toggleHaptics(enabled: boolean): void {

@@ -1,11 +1,9 @@
-import { Component, OnInit } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { ToastController } from '@ionic/angular';
-import { combineLatest, map } from 'rxjs';
+import { combineLatest, firstValueFrom, map } from 'rxjs';
 import { ShopService } from '../../core/services/shop.service';
-import { ShopItem } from '../../core/models/shop.models';
 import { AudioService } from '../../core/services/audio.service';
-import { AdsService } from '../../core/services/ads.service';
 
 @Component({
   selector: 'app-cannon-details',
@@ -13,13 +11,15 @@ import { AdsService } from '../../core/services/ads.service';
   styleUrls: ['./cannon-details.page.scss'],
   standalone: false,
 })
-export class CannonDetailsPage implements OnInit {
-  item?: ShopItem;
-  readonly state$ = combineLatest([this.shopService.ownedIds$, this.shopService.equippedCannonId$]).pipe(
-    map(([owned, equipped]) => ({
-      owned: this.item ? owned.has(this.item.id) : false,
-      equipped: this.item ? equipped === this.item.id : false,
-    }))
+export class CannonDetailsPage {
+  readonly pending = signal<'coins' | 'ad' | null>(null);
+  readonly busy$ = this.shopService.busy$;
+  readonly state$ = combineLatest([this.route.paramMap, this.shopService.ownedIds$, this.shopService.equippedItems$]).pipe(
+    map(([params, owned, equipped]) => {
+      const item = this.shopService.getItem(params.get('id') ?? '');
+      if (!item) void this.router.navigateByUrl('/shop', { replaceUrl: true });
+      return { item, owned: !!item && owned.has(item.id), equipped: !!item && equipped[item.category] === item.id };
+    })
   );
 
   constructor(
@@ -27,67 +27,53 @@ export class CannonDetailsPage implements OnInit {
     private readonly router: Router,
     private readonly shopService: ShopService,
     private readonly audioService: AudioService,
-    private readonly adsService: AdsService,
     private readonly toastCtrl: ToastController
   ) {}
-
-  ngOnInit(): void {
-    const id = this.route.snapshot.paramMap.get('id') ?? '';
-    this.item = this.shopService.getItem(id);
-    if (!this.item) {
-      this.router.navigateByUrl('/shop', { replaceUrl: true });
-    }
-  }
 
   goBack(): void {
     this.router.navigateByUrl('/shop');
   }
 
-  async buyNow(): Promise<void> {
-    if (!this.item) return;
+  async buyNow(itemId: string): Promise<void> {
+    if (this.pending()) return;
+    this.pending.set('coins');
     try {
-      await new Promise<void>((resolve, reject) => {
-        this.shopService.purchase(this.item!.id).subscribe({ next: () => resolve(), error: reject });
-      });
+      await firstValueFrom(this.shopService.purchase(itemId));
       this.audioService.purchaseSuccess();
-      this.toast('Item purchased!', 'success');
-    } catch {
+      await this.toast('Purchased and equipped!', 'success');
+    } catch (error) {
       this.audioService.purchaseFailed();
-      this.offerAdForCoins();
+      await this.toast(error instanceof Error ? error.message : 'Purchase unavailable. Please try again.', 'warning');
+    } finally {
+      this.pending.set(null);
     }
   }
 
-  equip(): void {
-    if (!this.item) return;
-    this.shopService.equipCannon(this.item.id);
-    this.audioService.buttonTap();
-    this.toast('Cannon equipped!', 'success');
+  async equip(itemId: string): Promise<void> {
+    try {
+      this.shopService.equip(itemId);
+      this.audioService.buttonTap();
+      await this.toast('Item equipped!', 'success');
+    } catch (error) {
+      await this.toast(error instanceof Error ? error.message : 'Unable to equip this item.', 'warning');
+    }
   }
 
-  /** Insufficient-funds path: offer the same capped rewarded ad Wallet uses, right when it's actually useful. */
-  private async offerAdForCoins(): Promise<void> {
-    const toast = await this.toastCtrl.create({
-      message: 'Not enough coins for this item.',
-      duration: 3200,
-      color: 'warning',
-      position: 'bottom',
-      buttons: [
-        {
-          text: 'Watch Ad for Coins',
-          handler: () => {
-            this.adsService.watchAd().subscribe((result) => {
-              if (result.granted) {
-                this.audioService.claimReward();
-                this.toast(`+${result.coins} coins credited!`, 'success');
-              } else {
-                this.toast(result.reason ?? 'Ad reward unavailable.', 'warning');
-              }
-            });
-          },
-        },
-      ],
-    });
-    await toast.present();
+  async watchAd(itemId: string): Promise<void> {
+    if (this.pending()) return;
+    this.pending.set('ad');
+    try {
+      if (await this.shopService.unlockWithAd(itemId)) {
+        this.audioService.claimReward();
+        await this.toast('Unlocked and equipped!', 'success');
+      } else {
+        await this.toast(this.shopService.adUnavailableMessage, 'warning');
+      }
+    } catch (error) {
+      await this.toast(error instanceof Error ? error.message : 'Ad unavailable. Please try again.', 'warning');
+    } finally {
+      this.pending.set(null);
+    }
   }
 
   private async toast(message: string, color: 'success' | 'warning'): Promise<void> {

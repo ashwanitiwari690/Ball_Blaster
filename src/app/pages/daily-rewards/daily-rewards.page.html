@@ -45,24 +45,5 @@
       {{ view.claimedToday ? 'Come back tomorrow' : 'Claim Reward' }}
     </ion-button>
 
-    <ion-button
-      *ngIf="view.claimedToday && !view.doubledToday"
-      expand="block"
-      fill="outline"
-      class="bb-btn-outline dr-double-btn"
-      [disabled]="doubling()"
-      (click)="doubleToday()"
-    >
-      <ion-spinner name="dots" *ngIf="doubling()"></ion-spinner>
-      <ng-container *ngIf="!doubling()">
-        <ion-icon name="play-circle" slot="start"></ion-icon>
-        Watch Ad to Double (+{{ view.todayRewardCoins }})
-      </ng-container>
-    </ion-button>
-
-    <div class="dr-doubled-note" *ngIf="view.doubledToday">
-      <ion-icon name="checkmark-circle"></ion-icon>
-      Today's reward doubled — nice!
-    </div>
   </div>
 </ion-content>

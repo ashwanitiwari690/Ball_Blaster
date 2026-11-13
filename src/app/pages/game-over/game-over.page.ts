@@ -1,10 +1,9 @@
-import { Component, OnInit, signal } from '@angular/core';
+import { Component, signal } from '@angular/core';
 import { Router } from '@angular/router';
-import { ViewWillEnter, ToastController } from '@ionic/angular';
+import { ViewWillEnter } from '@ionic/angular';
 import { LastGameResultService, LastGameSummary } from '../../core/services/last-game-result.service';
 import { AudioService } from '../../core/services/audio.service';
 import { AdmobService } from '../../core/services/admob.service';
-import { WalletRepositoryPort } from '../../core/ports/wallet-repository.port';
 
 @Component({
   selector: 'app-game-over',
@@ -12,33 +11,21 @@ import { WalletRepositoryPort } from '../../core/ports/wallet-repository.port';
   styleUrls: ['./game-over.page.scss'],
   standalone: false,
 })
-export class GameOverPage implements OnInit, ViewWillEnter {
+export class GameOverPage implements ViewWillEnter {
   // Signals throughout — see GamePage's doc comment on this app's zoneless
   // change detection; every one of these changes from an async ad/wallet
   // callback, never from a template-bound event.
   readonly summary = signal<LastGameSummary | null>(null);
-  readonly processing = signal(true);
-  readonly doublingCoins = signal(false);
-  readonly doubledCoins = signal(false);
   readonly navigating = signal(false);
 
   constructor(
     private readonly router: Router,
     private readonly lastGameResultService: LastGameResultService,
     private readonly audioService: AudioService,
-    private readonly admobService: AdmobService,
-    private readonly wallet: WalletRepositoryPort,
-    private readonly toastCtrl: ToastController
+    private readonly admobService: AdmobService
   ) {}
 
   ionViewWillEnter(): void {
-    this.navigating.set(false);
-  }
-
-  ngOnInit(): void {
-    this.processing.set(true);
-    this.doublingCoins.set(false);
-    this.doubledCoins.set(false);
     this.navigating.set(false);
     this.summary.set(null);
 
@@ -48,67 +35,8 @@ export class GameOverPage implements OnInit, ViewWillEnter {
       return;
     }
     this.summary.set(summary);
-    // A brief, honest "confirming with the server" beat — in production this
-    // is the real latency of POST /game/session/complete (spec section 31).
-    setTimeout(() => {
-      this.processing.set(false);
-      if (summary.outcome.coinsEarned > 0) this.audioService.coinEarned();
-    }, 700);
-  }
-
-  private doubleReferenceId(sessionId: string): string {
-    return `ad-double-${sessionId}`;
-  }
-
-  /**
-   * Watches a rewarded ad to grant a second copy of this run's coins.
-   * Idempotent per session via the ledger's referenceId guard (in addition
-   * to the `doubledCoins`/`doublingCoins` UI guards), so this can never be
-   * granted twice even if triggered again some other way.
-   */
-  async doubleCoins(): Promise<void> {
-    const s = this.summary();
-    if (!s || this.doublingCoins() || this.doubledCoins() || s.outcome.coinsEarned <= 0) return;
-    this.doublingCoins.set(true);
-    try {
-      const watched = await this.admobService.showRewarded();
-      if (!watched) {
-        const reason = this.admobService.lastRewardFailureReason;
-        const msg =
-          reason === 'dismissed_early'
-            ? 'Ad closed early — bonus coins not credited.'
-            : 'Ad is currently unavailable. Please try again shortly.';
-        const toast = await this.toastCtrl.create({
-          message: msg,
-          duration: 1800,
-          color: 'warning',
-          position: 'bottom',
-        });
-        await toast.present();
-        return;
-      }
-      this.wallet
-        .credit({
-          amount: s.outcome.coinsEarned,
-          type: 'AD_REWARD',
-          source: 'game-over-double',
-          referenceId: this.doubleReferenceId(s.sessionId),
-        })
-        .subscribe(async (wallet) => {
-          this.doubledCoins.set(true);
-          this.audioService.coinEarned();
-          this.summary.update((current) => (current ? { ...current, outcome: { ...current.outcome, wallet } } : current));
-          const toast = await this.toastCtrl.create({
-            message: `2x Bonus credited! +${s.outcome.coinsEarned} coins added.`,
-            duration: 1800,
-            color: 'success',
-            position: 'bottom',
-          });
-          await toast.present();
-        });
-    } finally {
-      this.doublingCoins.set(false);
-    }
+    this.admobService.recordCompletedRound(summary.sessionId);
+    if (summary.outcome.coinsEarned > 0) this.audioService.coinEarned();
   }
 
   async playAgain(): Promise<void> {

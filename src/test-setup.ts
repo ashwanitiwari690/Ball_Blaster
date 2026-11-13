@@ -14,3 +14,5 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+import './app/shared/app-icons';
